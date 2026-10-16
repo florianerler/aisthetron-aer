@@ -4,7 +4,7 @@ from machine import I2C, Pin
 from sht45 import read_sensor
 #variables:
 station_id = "AER-C01"
-firmware_version = "Firmware: 0.1.1"
+firmware_version = "Firmware: 0.1.2"
 
 #definitions:
 def start_report():
@@ -32,12 +32,15 @@ def main():
     start_report()
     while True:
         status_report()
-        temperature, humidity, valid = read_sensor(i2c)
-        if valid:
-            print(f"{station_id}: Temperature: {temperature:.2f} C")
-            print(f"{station_id}: Humidity: {humidity:.2f} %")
-        else:
-            print(f"[{station_id}]: CRC check failed")
+        try:
+            temperature, humidity, valid = read_sensor(i2c)
+            if valid:
+                print(f"{station_id}: Temperature: {temperature:.2f} C")
+                print(f"{station_id}: Humidity: {humidity:.2f} %")
+            else:
+                print(f"[{station_id}]: CRC check failed")
+        except OSError:
+            print(f"[{station_id}]: I2C fault detected")
         time.sleep(5)
 
 #main:
