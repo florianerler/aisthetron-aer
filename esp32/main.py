@@ -3,16 +3,16 @@ import time
 from machine import I2C, Pin
 
 #variables:
-station_id = "METRON-C01"
+station_id = "AER-C01"
 firmware_version = "Firmware: 0.1.0"
 
 #definitions:
 def start_report():
     """
-    Display the startup information of METRON CLIMA.
+    Display the startup information of AISTHETRON AER.
     """
     print("=" * 60)
-    print("METRON CLIMA")
+    print("AISTHETRON AER")
     print("=" * 60)
     print(f"[{station_id}] Station")
     print(firmware_version)
@@ -20,13 +20,13 @@ def start_report():
 
 def status_report():
     """
-    Display the status of METRON CLIMA.
+    Display the status of AISTHETRON AER.
     """
     print(f"[{station_id}] System active")
 
 def main():
     """
-    Initialize METRON CLIMA and run the status loop.
+    Initialize AISTHETRON AER and run the status loop.
     """
     start_report()
     while True:
