@@ -6,9 +6,11 @@ AISTHETRON AER is an experimental environmental sensing project. Its first proto
 
 ## Development status
 
-**Experimental prototype — application firmware 0.1.0.** First successful operation was recorded on **16 October 2026**. This milestone demonstrates working sensor communication and repeated measurements; it does not establish measurement accuracy or long-term reliability.
+**Experimental prototype — application firmware 0.1.1.** First successful operation was recorded on **16 October 2026**. This milestone demonstrates working sensor communication and repeated measurements; it does not establish measurement accuracy or long-term reliability.
 
-The current implementation reads the sensor and prints results to the serial console. CRC validation, communication error handling, persistent storage, and system calibration are not implemented.
+The current implementation validates both sensor CRCs and prints only accepted measurement pairs to the serial console. A CRC mismatch discards the entire pair; the application reports the failure and continues with the next cycle. I²C exception handling, persistent storage, and system calibration are not implemented.
+
+Application version `0.1.1` identifies the current code. The existing `v0.1.0` release tag identifies the earlier prototype milestone; changing the application version does not create or update a GitHub release.
 
 ![AER-C01 prototype assembled and unpowered](docs/images/prototype-v01.jpg)
 
@@ -27,7 +29,7 @@ The current implementation reads the sensor and prints results to the serial con
 | SDA | GPIO21 |
 | SCL | GPIO22 |
 | MicroPython | 1.29.0, as recorded for the successful prototype run |
-| Application firmware | `0.1.0`, reported by `main.py` |
+| Application firmware | `0.1.1`, reported by `main.py` |
 | Measurement interval | Approximately 5 seconds, plus acquisition and output time |
 
 ### Wiring
@@ -49,7 +51,9 @@ Power the ESP32 development board through its USB connector. The sensor is suppl
 ```text
 esp32/
     main.py                  Application startup and measurement loop
-    sht45.py                 Sensor communication and value conversion
+    sht45.py                 Sensor communication, CRC validation and conversion
+tests/
+    test_sht45.py             Host-side CRC and sensor-driver unit tests
 docs/
     images/
         soldering.jpg
@@ -64,9 +68,9 @@ The original image copies are also retained under `docs/hardware.md/images/`. De
 
 ## Firmware behavior
 
-[`esp32/main.py`](esp32/main.py) initializes the I²C bus, prints the station ID and application version, then repeatedly calls `read_sensor(i2c)`, prints temperature and humidity to two decimal places, and sleeps for five seconds.
+[`esp32/main.py`](esp32/main.py) initializes the I²C bus, prints the station ID and application version, then repeatedly calls `read_sensor(i2c)` and checks its validity flag. Valid measurements are printed to two decimal places. On a CRC mismatch, the application prints `[AER-C01]: CRC check failed` instead of measurement values. Both paths then sleep for five seconds.
 
-[`esp32/sht45.py`](esp32/sht45.py) sends command `0xFD` to address `0x44`, waits 20 ms, and reads six bytes. It prints the raw byte response for debugging and converts the two measurement values:
+[`esp32/sht45.py`](esp32/sht45.py) sends command `0xFD` to address `0x44`, waits 20 ms, and reads six bytes. It prints the raw byte response for debugging and validates each pair of measurement bytes against its accompanying CRC before converting accepted values:
 
 ```text
 raw_temperature = data[0] * 256 + data[1]
@@ -76,7 +80,20 @@ temperature_C = -45 + 175 * raw_temperature / 65535
 humidity_percent = -6 + 125 * raw_humidity / 65535
 ```
 
-Bytes 2 and 5 contain CRC information but are currently ignored. The driver does not clamp humidity to the range 0–100%. Two displayed decimal places describe output formatting, not validated accuracy.
+### CRC validation and return values
+
+`calculate_crc(data_bytes)` implements CRC-8 with polynomial `0x31`, initial value `0xFF`, no reflection, and no final XOR.
+
+| Measurement | Bytes used to calculate CRC | Received CRC |
+| --- | --- | --- |
+| Temperature | `data[0:2]` (bytes 0 and 1) | `data[2]` |
+| Humidity | `data[3:5]` (bytes 3 and 4) | `data[5]` |
+
+Both checks must pass. `read_sensor(i2c)` returns `(temperature, humidity, True)` on success or `(None, None, False)` if either CRC check fails. Even if one value passes, the entire pair is discarded when the other fails. CRC validation checks data integrity; it does not establish measurement accuracy or calibration.
+
+I²C read/write exceptions are not caught yet and can still stop the application.
+
+The driver does not clamp humidity to the range 0–100%. Two displayed decimal places describe output formatting, not validated accuracy.
 
 ## Installation
 
@@ -120,7 +137,7 @@ py -m mpremote connect COM3 fs cp esp32/sht45.py :sht45.py
 py -m mpremote connect COM3 fs cp esp32/main.py :main.py
 ```
 
-These commands replace files with the same names on the device. `main.py` imports `sht45.py`, so both must be present.
+Save both files in your editor before uploading. These commands replace files with the same names on the device. Upload both files together: `main.py` now expects the three return values provided by the updated `sht45.py`. The `tests/` directory stays on the computer and is not uploaded to the ESP32.
 
 ## Usage
 
@@ -137,11 +154,11 @@ Press the ESP32 reset button to start the installed application. During normal s
 AISTHETRON AER
 ============================================================
 [AER-C01] Station
-Firmware: 0.1.0
+Firmware: 0.1.1
 System initialized
 ```
 
-Each cycle then prints `[AER-C01] System active`, a raw `bytes` debug line, and temperature and humidity readings prefixed with `AER-C01:`. Values change with the environment. The cycle takes slightly longer than five seconds because the sensor read and console output occur before the five-second sleep.
+Each cycle then prints `[AER-C01] System active` and a raw `bytes` debug line. If both CRC checks pass, temperature and humidity readings follow, prefixed with `AER-C01:`. Otherwise, `[AER-C01]: CRC check failed` is printed and the measurement pair is discarded. Values change with the environment. The cycle takes slightly longer than five seconds because the sensor read and console output occur before the five-second sleep.
 
 Use `Ctrl+C` to interrupt the loop and access the REPL, or `Ctrl+]` to leave the console. A powered board can continue measuring without a computer, but the application does not save or transmit measurements beyond the serial output.
 
@@ -153,8 +170,28 @@ Use `Ctrl+C` to interrupt the loop and access the REPL, or `Ctrl+]` to leave the
 | Port busy | Close other programs using the same serial port |
 | Scan returns `[]` | 3.3 V supply, common ground, SDA GPIO21, SCL GPIO22, and solder joints |
 | `ImportError` for `sht45` | Upload `sht45.py` to the device root alongside `main.py` |
+| `CRC check failed` | The pair was rejected; the next cycle runs after the five-second wait. If failures recur, inspect wiring and power. |
 | I²C error stops the loop | Inspect wiring and power, then restart; automatic recovery is not implemented |
 | No output after uploading | Reopen the console and press the board's reset button |
+
+## Automated tests
+
+Run the tests on your computer from the repository root:
+
+```powershell
+py -m unittest discover -s tests -v
+```
+
+The suite uses Python's standard-library `unittest` and `unittest.mock`; no ESP32 connection is required. `FakeI2C` supplies fixed six-byte responses, and `time.sleep_ms` is patched because it is a MicroPython function unavailable in normal desktop Python.
+
+The four tests in [`tests/test_sht45.py`](tests/test_sht45.py) cover:
+
+- The known CRC reference: `0xBE 0xEF` produces `0x92`.
+- A valid packet returns `True` and the expected temperature and humidity within the asserted tolerance.
+- A modified temperature byte with an unchanged CRC rejects the entire pair.
+- A modified humidity byte with an unchanged CRC also rejects the entire pair.
+
+All four tests passed during local verification of this update. Raw byte lines in the test output come from the driver's debug print. These tests do not validate physical I²C communication, recovery from I²C exceptions, malformed packet lengths, the main loop, or long-term measurement accuracy.
 
 ## Build and first run
 
@@ -180,7 +217,6 @@ Use `Ctrl+C` to interrupt the loop and access the REPL, or `Ctrl+]` to leave the
 
 | Current limitation | Intended improvement |
 | --- | --- |
-| CRC bytes are ignored | Validate both CRC values before accepting a sample |
 | I²C exceptions terminate the loop | Add error reporting, retries, and recovery |
 | No automatic startup sensor check | Add sensor presence checks and diagnostics |
 | Debug bytes and human-readable output only | Define a structured measurement format |
