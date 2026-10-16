@@ -1,842 +1,202 @@
-# \# AISTHETRON AER
-
-# 
-
-# \*\*An Open Scientific Environmental Sensing Project\*\*
-
-# 
-
-# \*Making the Invisible Measurable.\*
-
-# 
-
-# \*\*Development status:\*\* Experimental Prototype  
-
-# \*\*Firmware:\*\* v0.1.0  
-
-# \*\*First prototype:\*\* AER-C01  
-
-# \*\*First successful operation:\*\* October 16, 2026  
-
-# \*\*Platform:\*\* ESP32 / MicroPython
-
-# 
-
-# \---
-
-# 
-
-# \## 1. Project Overview
-
-# 
-
-# \*\*AISTHETRON\*\* is an experimental scientific measurement project focused on developing modular, expandable and accessible sensor systems for observing physical and environmental phenomena.
-
-# 
-
-# The name is inspired by the ancient Greek concept of \*aisthesis\* (αἴσθησις), meaning perception or sensation.
-
-# 
-
-# The objective is to extend human perception through electronic measurement systems, transforming physical phenomena into measurable, processable and eventually publishable data.
-
-# 
-
-# \*\*AISTHETRON AER\*\* is the first experimental instrument within this project.
-
-# 
-
-# AER, derived from the ancient Greek \*aēr\* (ἀήρ), meaning air, focuses on environmental measurements.
-
-# 
-
-# The first prototype, \*\*AER-C01\*\*, measures ambient temperature and relative humidity using an ESP32 microcontroller and an SHT45 digital sensor.
-
-# 
-
-# \### Project Objectives
-
-# 
-
-# \- Develop custom measurement hardware and firmware.
-
-# \- Understand sensor communication at the protocol level.
-
-# \- Implement data acquisition and processing using MicroPython and Python.
-
-# \- Establish a modular architecture for future instruments.
-
-# \- Enable long-term environmental monitoring and data analysis.
-
-# \- Document the development process openly and reproducibly.
-
-# 
-
-# \---
-
-# 
-
-# \## 2. Prototype AER-C01
-
-# 
-
-# !\[AISTHETRON AER-C01 prototype](docs/images/prototype-v01.jpg)
-
-# 
-
-# \*Figure 1: AER-C01 prototype after assembly, before initial power-up.\*
-
-# 
-
-# AER-C01 is the first functional prototype of the AISTHETRON AER instrument family.
-
-# 
-
-# It uses a digital SHT45 sensor connected to an ESP32 development board via the I²C communication protocol.
-
-# 
-
-# The microcontroller independently executes measurement cycles and provides the results through its serial interface.
-
-# 
-
-# \### Hardware Components
-
-# 
-
-# | Component | Description |
-
-# |---|---|
-
-# | Microcontroller | ESP32 NodeMCU, ESP32-D0WD-V3 |
-
-# | USB interface | CH340 USB-to-Serial |
-
-# | Flash memory | 4 MB |
-
-# | Sensor | Sensirion SHT45 |
-
-# | Communication | I²C, 100 kHz |
-
-# | Operating voltage | 3.3 V logic |
-
-# | Development platform | Breadboard and jumper wires |
-
-# | Firmware | MicroPython v1.29.0 |
-
-# 
-
-# \### Electrical Connections
-
-# 
-
-# | SHT45 | ESP32 | Function |
-
-# |---|---|---|
-
-# | VIN | 3V3 | Sensor power supply |
-
-# | GND | GND | Common ground |
-
-# | SDA | GPIO21 | I²C serial data |
-
-# | SCL | GPIO22 | I²C serial clock |
-
-# | 3Vo | Not connected | Breakout regulator output |
-
-# 
-
-# The SHT45 uses the I²C address `0x44`.
-
-# 
-
-# The prototype operates with an I²C clock frequency of 100 kHz.
-
-# 
-
-# \*\*Important:\*\* The wiring applies to the development board and SHT45 breakout used in this prototype. Pin assignments and voltage requirements must be verified before reproducing the design with different hardware.
-
-# 
-
-# \---
-
-# 
-
-# \## 3. Hardware Development
-
-# 
-
-# \### 3.1 Sensor Assembly
-
-# 
-
-# !\[SHT45 soldering](docs/images/soldering.jpg)
-
-# 
-
-# \*Figure 2: First assembly of the SHT45 breakout board, including manually soldered header connections.\*
-
-# 
-
-# The sensor header was soldered manually and subsequently inspected.
-
-# 
-
-# Electrical continuity and isolation checks were performed before the initial power-up.
-
-# 
-
-# The prototype was then assembled using jumper wires and a solderless breadboard.
-
-# 
-
-# \### 3.2 First Power-Up
-
-# 
-
-# !\[First power-up](docs/images/first\_power\_up.jpg)
-
-# 
-
-# \*Figure 3: AER-C01 during its first power-up after hardware assembly.\*
-
-# 
-
-# Following assembly and preliminary electrical checks, the system was powered through the ESP32 USB interface.
-
-# 
-
-# The microcontroller was successfully identified through its serial connection.
-
-# 
-
-# MicroPython firmware was installed using Espressif's `esptool`.
-
-# 
-
-# An initial I²C scan returned:
-
-# 
-
-# ```text
-
-# \[68]
-
-# ```
-
-# 
-
-# This corresponds to the hexadecimal address `0x44`, confirming that a device responded at the expected SHT45 address.
-
-# 
-
-# \---
-
-# 
-
-# \## 4. Firmware Architecture
-
-# 
-
-# The initial firmware is written in MicroPython and divided into two modules.
-
-# 
-
-# ```text
-
-# aisthetron-aer/
-
-# |
-
-# |-- esp32/
-
-# |   |-- main.py
-
-# |   `-- sht45.py
-
-# |
-
-# |-- docs/
-
-# |   `-- images/
-
-# |       |-- soldering.jpg
-
-# |       |-- first\_power\_up.jpg
-
-# |       |-- prototype-v01.jpg
-
-# |       `-- first\_run\_v01.jpg
-
-# |
-
-# `-- README.md
-
-# ```
-
-# 
-
-# \### `main.py`
-
-# 
-
-# Responsible for:
-
-# 
-
-# \- Initializing the I²C interface.
-
-# \- Displaying system startup information.
-
-# \- Coordinating measurement cycles.
-
-# \- Calling the sensor driver.
-
-# \- Displaying the measured values.
-
-# \- Managing the measurement interval.
-
-# 
-
-# \### `sht45.py`
-
-# 
-
-# Responsible for:
-
-# 
-
-# \- Sending the measurement command to the SHT45.
-
-# \- Waiting for sensor conversion.
-
-# \- Receiving the measurement data.
-
-# \- Combining the raw measurement bytes.
-
-# \- Converting raw values into physical quantities.
-
-# \- Returning temperature and relative humidity.
-
-# 
-
-# The separation between program control and sensor communication is intended to simplify maintenance and future development.
-
-# 
-
-# \---
-
-# 
-
-# \## 5. Measurement Principle
-
-# 
-
-# AER-C01 communicates with the SHT45 using the I²C protocol.
-
-# 
-
-# \### Measurement Sequence
-
-# 
-
-# 1\. The ESP32 sends the high-precision measurement command `0xFD`.
-
-# 2\. The sensor performs a temperature and humidity measurement.
-
-# 3\. The firmware waits 20 milliseconds.
-
-# 4\. The ESP32 receives six bytes.
-
-# 5\. Temperature and humidity raw values are reconstructed.
-
-# 6\. The values are converted into physical units.
-
-# 7\. The results are transmitted through the serial interface.
-
-# 
-
-# \### Data Structure
-
-# 
-
-# | Byte | Description |
-
-# |---|---|
-
-# | 0 | Temperature MSB |
-
-# | 1 | Temperature LSB |
-
-# | 2 | Temperature CRC |
-
-# | 3 | Humidity MSB |
-
-# | 4 | Humidity LSB |
-
-# | 5 | Humidity CRC |
-
-# 
-
-# \### Temperature Conversion
-
-# 
-
-# ```text
-
-# T = -45 + 175 \* S\_T / 65535
-
-# ```
-
-# 
-
-# Where:
-
-# 
-
-# \- `T` = Temperature in °C
-
-# \- `S\_T` = 16-bit raw temperature value
-
-# 
-
-# \### Relative Humidity Conversion
-
-# 
-
-# ```text
-
-# RH = -6 + 125 \* S\_RH / 65535
-
-# ```
-
-# 
-
-# Where:
-
-# 
-
-# \- `RH` = Relative humidity in %
-
-# \- `S\_RH` = 16-bit raw humidity value
-
-# 
-
-# These conversion formulas are based on the SHT4x sensor documentation.
-
-# 
-
-# \*\*Current limitation:\*\* The firmware receives the CRC bytes but does not yet validate them. CRC-8 verification is planned for a future development stage.
-
-# 
-
-# \---
-
-# 
-
-# \## 6. First Successful Operation
-
-# 
-
-# !\[AISTHETRON first operational run](docs/images/first\_run\_v01.jpg)
-
-# 
-
-# \*Figure 4: AER-C01 during its first autonomous measurement cycles, showing the physical prototype and live MicroPython serial output.\*
-
-# 
-
-# On October 16, 2026, AER-C01 successfully completed its first automatic measurement cycles.
-
-# 
-
-# The system initialized the I²C interface, communicated with the SHT45 and continuously reported environmental measurements.
-
-# 
-
-# \### Example Serial Output
-
-# 
-
-# ```text
-
-# ============================================================
-
 # AISTHETRON AER
 
-# ============================================================
+*Making the Invisible Measurable.*
 
-# \[AER-C01] Station
+AISTHETRON AER is an experimental environmental sensing project. Its first prototype, **AER-C01**, measures ambient temperature and relative humidity with an ESP32 and an SHT45 sensor using MicroPython.
 
-# Firmware: 0.1.0
+## Development status
 
-# System initialized
+**Experimental prototype — application firmware 0.1.0.** First successful operation was recorded on **16 October 2026**. This milestone demonstrates working sensor communication and repeated measurements; it does not establish measurement accuracy or long-term reliability.
 
-# 
+The current implementation reads the sensor and prints results to the serial console. CRC validation, communication error handling, persistent storage, and system calibration are not implemented.
 
-# \[AER-C01] System active
+![AER-C01 prototype assembled and unpowered](docs/images/prototype-v01.jpg)
 
-# AER-C01: Temperature: 24.63 C
+*The assembled AER-C01 prototype before power-up.*
 
-# AER-C01: Humidity: 44.66 %
+## Hardware and configuration
 
-# 
+| Item | Prototype configuration |
+| --- | --- |
+| Microcontroller | ESP32-D0WD-V3 development board |
+| USB-to-serial interface | CH340 |
+| Sensor | Sensirion SHT45 breakout |
+| Sensor supply and logic | 3.3 V |
+| Bus | I²C controller 0, 100 kHz |
+| Sensor address | `0x44` (decimal `68`) |
+| SDA | GPIO21 |
+| SCL | GPIO22 |
+| MicroPython | 1.29.0, as recorded for the successful prototype run |
+| Application firmware | `0.1.0`, reported by `main.py` |
+| Measurement interval | Approximately 5 seconds, plus acquisition and output time |
 
-# \[AER-C01] System active
+### Wiring
 
-# AER-C01: Temperature: 24.62 C
+Disconnect power before wiring. These connections describe the breakout used in this prototype; check the labels and supply requirements of your own board.
 
-# AER-C01: Humidity: 44.87 %
+| SHT45 breakout | ESP32 connection |
+| --- | --- |
+| VIN | 3V3 |
+| GND | GND |
+| SDA | GPIO21 |
+| SCL | GPIO22 |
+| 3Vo, if present | Leave unconnected |
 
-# 
+Power the ESP32 development board through its USB connector. The sensor is supplied from the board's 3.3 V rail.
 
-# \[AER-C01] System active
+## Repository layout
 
-# AER-C01: Temperature: 24.61 C
+```text
+esp32/
+    main.py                  Application startup and measurement loop
+    sht45.py                 Sensor communication and value conversion
+docs/
+    images/
+        soldering.jpg
+        first_power_up.jpg
+        prototype-v01.jpg
+        first_run_v01.jpg
+README.md
+LICENSE
+```
 
-# AER-C01: Humidity: 44.11 %
+The original image copies are also retained under `docs/hardware.md/images/`. Despite its name, `hardware.md` is an existing directory, not a Markdown document. The images displayed here use `docs/images/`.
 
-# ```
+## Firmware behavior
 
-# 
+[`esp32/main.py`](esp32/main.py) initializes the I²C bus, prints the station ID and application version, then repeatedly calls `read_sensor(i2c)`, prints temperature and humidity to two decimal places, and sleeps for five seconds.
 
-# The initial firmware performs a measurement approximately every five seconds, plus the time required for sensor acquisition and processing.
+[`esp32/sht45.py`](esp32/sht45.py) sends command `0xFD` to address `0x44`, waits 20 ms, and reads six bytes. It prints the raw byte response for debugging and converts the two measurement values:
 
-# 
+```text
+raw_temperature = data[0] * 256 + data[1]
+raw_humidity    = data[3] * 256 + data[4]
 
-# During the first observed measurement sequence:
+temperature_C = -45 + 175 * raw_temperature / 65535
+humidity_percent = -6 + 125 * raw_humidity / 65535
+```
 
-# 
+Bytes 2 and 5 contain CRC information but are currently ignored. The driver does not clamp humidity to the range 0–100%. Two displayed decimal places describe output formatting, not validated accuracy.
 
-# \- Temperature remained between approximately 24.60 °C and 24.63 °C.
+## Installation
 
-# \- Relative humidity decreased from approximately 44.9% to 42.7%.
+### 1. Prepare the board and computer
 
-# \- Repeated measurements were successfully received over I²C.
+You need the wired prototype, a USB data cable, Python on your computer, and a compatible MicroPython installation on the ESP32. Install the CH340 driver if your operating system does not expose a serial port.
 
-# 
+The commands below are for Windows PowerShell, run from the repository root. Replace `COM3` with the port shown for your board. Close other serial monitors before connecting.
 
-# The observed decrease in relative humidity may reflect stabilization following handling and assembly. Further testing is required to determine the cause.
+```powershell
+py -m pip install mpremote
+py -m mpremote connect list
+```
 
-# 
+If MicroPython is already installed and working, keep it. For a fresh board, use the official [ESP32_GENERIC firmware and installation instructions](https://micropython.org/download/ESP32_GENERIC/) for the classic ESP32. Select firmware compatible with your actual board. The recorded prototype runtime is MicroPython 1.29.0; other versions have not been validated by this project. Back up existing device files before installing firmware or replacing application files.
 
-# These measurements demonstrate basic functionality but do not constitute a calibrated accuracy assessment.
+### 2. Check sensor communication
 
-# 
+Open the MicroPython console:
 
-# \---
+```powershell
+py -m mpremote connect COM3 repl
+```
 
-# 
+Press `Ctrl+C` if a program is running, then enter:
 
-# \## 7. Installation and Operation
+```python
+from machine import I2C, Pin
+i2c = I2C(0, sda=Pin(21), scl=Pin(22), freq=100000)
+print(i2c.scan())
+```
 
-# 
+For this single-sensor setup, the expected result is `[68]`, corresponding to `0x44`. This confirms that a device responds at the expected address; it is not a calibration or full sensor diagnostic. Exit the console with `Ctrl+]`.
 
-# \### Requirements
+### 3. Upload both application files
 
-# 
+Copy both files to the root of the ESP32 filesystem, not into an `esp32` subdirectory on the device:
 
-# \- ESP32 development board compatible with `ESP32\_GENERIC`
+```powershell
+py -m mpremote connect COM3 fs cp esp32/sht45.py :sht45.py
+py -m mpremote connect COM3 fs cp esp32/main.py :main.py
+```
 
-# \- SHT45 breakout board
+These commands replace files with the same names on the device. `main.py` imports `sht45.py`, so both must be present.
 
-# \- USB data cable
+## Usage
 
-# \- Python installed on the development computer
+Open the serial console again:
 
-# \- `esptool`
+```powershell
+py -m mpremote connect COM3 repl
+```
 
-# \- `mpremote`
+Press the ESP32 reset button to start the installed application. During normal startup, MicroPython executes `main.py` automatically. The startup report includes:
 
-# \- Compatible MicroPython firmware
+```text
+============================================================
+AISTHETRON AER
+============================================================
+[AER-C01] Station
+Firmware: 0.1.0
+System initialized
+```
 
-# 
+Each cycle then prints `[AER-C01] System active`, a raw `bytes` debug line, and temperature and humidity readings prefixed with `AER-C01:`. Values change with the environment. The cycle takes slightly longer than five seconds because the sensor read and console output occur before the five-second sleep.
 
-# Official MicroPython firmware:
+Use `Ctrl+C` to interrupt the loop and access the REPL, or `Ctrl+]` to leave the console. A powered board can continue measuring without a computer, but the application does not save or transmit measurements beyond the serial output.
 
-# 
+### Troubleshooting
 
-# https://micropython.org/download/ESP32\_GENERIC/
+| Symptom | Check |
+| --- | --- |
+| No serial port | USB data cable, CH340 driver, and board connection |
+| Port busy | Close other programs using the same serial port |
+| Scan returns `[]` | 3.3 V supply, common ground, SDA GPIO21, SCL GPIO22, and solder joints |
+| `ImportError` for `sht45` | Upload `sht45.py` to the device root alongside `main.py` |
+| I²C error stops the loop | Inspect wiring and power, then restart; automatic recovery is not implemented |
+| No output after uploading | Reopen the console and press the board's reset button |
 
-# 
+## Build and first run
 
-# \### Install Development Tools
+### Sensor assembly
 
-# 
+![SHT45 breakout during header soldering](docs/images/soldering.jpg)
 
-# ```powershell
+*Soldering the sensor breakout headers.*
 
-# py -m pip install esptool mpremote
+### First power-up
 
-# ```
+![AER-C01 powered for the first time after assembly](docs/images/first_power_up.jpg)
 
-# 
+*First power-up after assembling the prototype.*
 
-# \### Install MicroPython
+### First successful operation — 16 October 2026
 
-# 
+![AER-C01 operating alongside its serial console](docs/images/first_run_v01.jpg)
 
-# Download the appropriate ESP32\_GENERIC firmware binary from the official MicroPython website.
+*The prototype and console during the first successful measurement run.*
 
-# 
+## Limitations and next steps
 
-# For a compatible classic ESP32, flash the firmware using:
+| Current limitation | Intended improvement |
+| --- | --- |
+| CRC bytes are ignored | Validate both CRC values before accepting a sample |
+| I²C exceptions terminate the loop | Add error reporting, retries, and recovery |
+| No automatic startup sensor check | Add sensor presence checks and diagnostics |
+| Debug bytes and human-readable output only | Define a structured measurement format |
+| No timestamps or persistent storage | Add timestamped logging and data export |
+| No system calibration or reference comparison | Compare against a suitable reference and document uncertainty |
+| No long-term reliability assessment | Run extended stability tests |
 
-# 
+These are planned improvements, not current capabilities. There is no wireless telemetry in the present application. AER-C01 remains an experimental learning and development platform.
 
-# ```powershell
+## References
 
-# py -m esptool --port COM3 write-flash 0x1000 path-to-firmware.bin
+- [MicroPython documentation](https://docs.micropython.org/)
+- [MicroPython ESP32_GENERIC firmware](https://micropython.org/download/ESP32_GENERIC/)
+- [mpremote usage documentation](https://docs.micropython.org/en/latest/reference/mpremote.html)
+- [Sensirion SHT45 product information](https://sensirion.com/products/catalog/SHT45)
 
-# ```
+## License
 
-# 
-
-# Replace the filename with the actual downloaded firmware path.
-
-# 
-
-# The serial port may differ between computers.
-
-# 
-
-# \*\*Warning:\*\* Flashing firmware modifies the microcontroller's flash memory. Back up any existing firmware or files that must be preserved.
-
-# 
-
-# \### Upload the AISTHETRON Firmware
-
-# 
-
-# From the repository root:
-
-# 
-
-# ```powershell
-
-# py -m mpremote connect COM3 fs cp esp32/sht45.py :sht45.py
-
-# ```
-
-# 
-
-# ```powershell
-
-# py -m mpremote connect COM3 fs cp esp32/main.py :main.py
-
-# ```
-
-# 
-
-# Both files must be available on the ESP32.
-
-# 
-
-# \### Start the Serial Console
-
-# 
-
-# ```powershell
-
-# py -m mpremote connect COM3 repl
-
-# ```
-
-# 
-
-# Reset the ESP32 if necessary.
-
-# 
-
-# Once the `main.py` file has been installed, AER-C01 automatically starts its measurement program during normal device startup.
-
-# 
-
-# The system does not require a connected computer to perform measurements, provided that a suitable power supply is available.
-
-# 
-
-# However, the current prototype relies on its serial interface for measurement output and does not yet provide persistent data storage or wireless transmission.
-
-# 
-
-# \---
-
-# 
-
-# \## 8. Current Development Status
-
-# 
-
-# \*\*Prototype stage: Experimental firmware v0.1.0\*\*
-
-# 
-
-# \### Implemented
-
-# 
-
-# \- \[x] Hardware prototype assembly
-
-# \- \[x] SHT45 header soldering
-
-# \- \[x] ESP32 firmware installation
-
-# \- \[x] I²C communication established
-
-# \- \[x] SHT45 address detection
-
-# \- \[x] High-precision sensor measurement command
-
-# \- \[x] Raw temperature conversion
-
-# \- \[x] Raw humidity conversion
-
-# \- \[x] Modular MicroPython firmware
-
-# \- \[x] Automatic measurement loop
-
-# \- \[x] Serial measurement output
-
-# \- \[x] Automatic execution at startup
-
-# 
-
-# \### Planned Improvements
-
-# 
-
-# \- \[ ] CRC-8 checksum verification
-
-# \- \[ ] Sensor communication error handling
-
-# \- \[ ] Startup sensor diagnostics
-
-# \- \[ ] Structured measurement output
-
-# \- \[ ] Python-based desktop data acquisition
-
-# \- \[ ] CSV data logging with timestamps
-
-# \- \[ ] Real-time measurement visualization
-
-# \- \[ ] Extended stability testing
-
-# \- \[ ] Wireless data transmission
-
-# \- \[ ] Support for multiple measurement nodes
-
-# 
-
-# The current firmware is intended for experimental and educational use. It is not a calibrated or safety-certified measurement system.
-
-# 
-
-# \---
-
-# 
-
-# \## 9. Future Development
-
-# 
-
-# AISTHETRON is intended to evolve into a modular scientific measurement ecosystem.
-
-# 
-
-# Potential future instrument families include:
-
-# 
-
-# | Instrument Family | Intended Application |
-
-# |---|---|
-
-# | AISTHETRON AER | Atmospheric and indoor environmental monitoring |
-
-# | AISTHETRON SEISMOS | Seismic signal acquisition and analysis |
-
-# | Future modules | Additional physical and environmental measurements |
-
-# 
-
-# Long-term development goals include standardized data formats, centralized acquisition, distributed measurement nodes, data visualization and the possibility of sharing measurement datasets.
-
-# 
-
-# These are development objectives rather than currently implemented features.
-
-# 
-
-# \---
-
-# 
-
-# \## 10. Development Philosophy
-
-# 
-
-# AISTHETRON follows a learning-oriented development approach.
-
-# 
-
-# Instead of relying exclusively on existing sensor libraries, the initial firmware was developed through direct experimentation with I²C communication, raw sensor data and manufacturer-defined conversion formulas.
-
-# 
-
-# The project emphasizes understanding the underlying hardware and software mechanisms.
-
-# 
-
-# Its development process combines electronics, programming, physics and measurement technology.
-
-# 
-
-# \*\*AISTHETRON — Making the Invisible Measurable.\*\*
-
-# 
-
-# \---
-
-# 
-
-# \## 11. References
-
-# 
-
-# \- \[MicroPython Documentation](https://docs.micropython.org/)
-
-# \- \[MicroPython ESP32 Downloads](https://micropython.org/download/ESP32\_GENERIC/)
-
-# \- \[Sensirion SHT4x Product Information](https://sensirion.com/products/catalog/SHT45)
-
-# \- \[Espressif ESP32 Documentation](https://docs.espressif.com/projects/esp-idf/en/stable/esp32/)
-
-# 
-
-# \---
-
-# 
-
-# \## 12. License
-
-# 
-
-# License selection is pending.
-
-# 
-
-# Until a license is added, the public availability of this repository does not automatically grant permission to redistribute or modify its contents.
-
-# 
-
-# \---
-
-# 
-
-# \*Developed as part of the AISTHETRON scientific measurement project.\*
-
-# 
-
-# \*First prototype: AER-C01 | October 2026\*
-
+This project is licensed under the [MIT License](LICENSE). Copyright © 2026 Florian Erler.
