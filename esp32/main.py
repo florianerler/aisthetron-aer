@@ -1,7 +1,7 @@
 #imports:
 import time
 from machine import I2C, Pin
-
+from sht45 import read_sensor
 #variables:
 station_id = "AER-C01"
 firmware_version = "Firmware: 0.1.0"
@@ -28,9 +28,13 @@ def main():
     """
     Initialize AISTHETRON AER and run the status loop.
     """
+    i2c = I2C(0, sda=Pin(21), scl=Pin(22), freq=100000)
     start_report()
     while True:
         status_report()
+        temperature, humidity = read_sensor(i2c)
+        print(f"{station_id}: Temperature: {temperature:.2f} C")
+        print(f"{station_id}: Humidity: {humidity:.2f} %")
         time.sleep(5)
 
 #main:
