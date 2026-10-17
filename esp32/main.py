@@ -2,9 +2,10 @@
 import time
 from machine import I2C, Pin
 from sht45 import read_sensor
+from led import led_control
 #variables:
 station_id = "AER-C01"
-firmware_version = "Firmware: 0.1.2"
+firmware_version = "Firmware: 0.1.3"
 
 #definitions:
 def start_report():
@@ -30,18 +31,25 @@ def main():
     """
     i2c = I2C(0, sda=Pin(21), scl=Pin(22), freq=100000)
     start_report()
-    while True:
-        status_report()
-        try:
-            temperature, humidity, valid = read_sensor(i2c)
-            if valid:
-                print(f"{station_id}: Temperature: {temperature:.2f} C")
-                print(f"{station_id}: Humidity: {humidity:.2f} %")
-            else:
-                print(f"[{station_id}]: CRC check failed")
-        except OSError:
-            print(f"[{station_id}]: I2C fault detected")
-        time.sleep(5)
+    led_control(0)
+    try:
+        while True:
+            status_report()
+            try:
+                temperature, humidity, valid = read_sensor(i2c)
+                if valid:
+                    print(f"{station_id}: Temperature: {temperature:.2f} C")
+                    print(f"{station_id}: Humidity: {humidity:.2f} %")
+                    led_control(1)
+                else:
+                    print(f"[{station_id}]: CRC check failed")
+                    led_control(0)
+            except OSError:
+                print(f"[{station_id}]: I2C fault detected")
+                led_control(0)
+            time.sleep(5)
+    finally:
+        led_control(0)
 
 #main:
 if __name__ == "__main__":

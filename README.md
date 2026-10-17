@@ -2,123 +2,111 @@
 
 *Making the Invisible Measurable.*
 
-AISTHETRON AER is an experimental environmental sensing project. Its first prototype, **AER-C01**, measures ambient temperature and relative humidity with an ESP32 and an SHT45 sensor using MicroPython.
+**AER-C01 · ESP32 + SHT45 · MicroPython · Application firmware v0.1.3**
 
-## Development status
+AISTHETRON AER is an experimental environmental sensing project. Its first prototype, **AER-C01**, measures ambient temperature and relative humidity, validates sensor data with CRC-8, and indicates accepted measurements with a blue status LED.
 
-**Experimental prototype — application firmware 0.1.1.** First successful operation was recorded on **16 October 2026**. This milestone demonstrates working sensor communication and repeated measurements; it does not establish measurement accuracy or long-term reliability.
+![AER-C01 measuring temperature and humidity with its blue status LED illuminated](docs/images/running_sensor_with_led.jpg)
 
-The current implementation validates both sensor CRCs and prints only accepted measurement pairs to the serial console. A CRC mismatch discards the entire pair; the application reports the failure and continues with the next cycle. I²C exception handling, persistent storage, and system calibration are not implemented.
+*The prototype in operation with serial output and the blue status LED. This photo records firmware v0.1.2; the current source reports v0.1.3.*
 
-Application version `0.1.1` identifies the current code. The existing `v0.1.0` release tag identifies the earlier prototype milestone; changing the application version does not create or update a GitHub release.
+[Hardware](#hardware-and-wiring) · [Firmware](#firmware-behavior) · [Setup](#installation-and-usage) · [Tests](#verification-and-tests) · [Build photos](#build-history) · [Credits](#development-and-credits)
 
-![AER-C01 prototype assembled and unpowered](docs/images/prototype-v01.jpg)
+## Current status
 
-*The assembled AER-C01 prototype before power-up.*
+The application prints valid temperature and humidity pairs to the serial console, rejects pairs with a failed CRC, and catches `OSError` during measurement. After either a handled error or a successful reading, it waits five seconds before the next cycle. An outer `try/finally` switches the LED off when execution leaves the measurement loop, including a `Ctrl+C` interruption.
 
-## Hardware and configuration
+First successful operation was recorded on **16 October 2026**. This is a working development prototype, with no system calibration or long-term reliability assessment. Updating this README does not create a release or Git tag.
 
-| Item | Prototype configuration |
+## Hardware and wiring
+
+| Component / setting | Prototype configuration |
 | --- | --- |
-| Microcontroller | ESP32-D0WD-V3 development board |
+| Controller | ESP32-D0WD-V3 development board |
 | USB-to-serial interface | CH340 |
-| Sensor | Sensirion SHT45 breakout |
-| Sensor supply and logic | 3.3 V |
-| Bus | I²C controller 0, 100 kHz |
-| Sensor address | `0x44` (decimal `68`) |
-| SDA | GPIO21 |
-| SCL | GPIO22 |
-| MicroPython | 1.29.0, as recorded for the successful prototype run |
-| Application firmware | `0.1.1`, reported by `main.py` |
-| Measurement interval | Approximately 5 seconds, plus acquisition and output time |
+| Runtime | MicroPython; 1.29.0 recorded for the initial successful run |
+| Sensor | Sensirion SHT45 breakout, 3.3 V supply and logic |
+| I²C | Controller 0, 100 kHz, address `0x44` (decimal `68`) |
+| SDA / SCL | GPIO21 / GPIO22 |
+| Status indicator | Blue LED on GPIO25 with a 330-ohm series resistor |
+| Station ID | `AER-C01` |
+| Application version | `0.1.3`, as reported by `esp32/main.py` |
+| Measurement timing | Five-second sleep per cycle, plus acquisition and console output time |
 
-### Wiring
+Disconnect power before wiring. The connections below describe this prototype's breakout; check the labels on your board.
 
-Disconnect power before wiring. These connections describe the breakout used in this prototype; check the labels and supply requirements of your own board.
-
-| SHT45 breakout | ESP32 connection |
+| Connection | ESP32 / destination |
 | --- | --- |
-| VIN | 3V3 |
-| GND | GND |
-| SDA | GPIO21 |
-| SCL | GPIO22 |
-| 3Vo, if present | Leave unconnected |
+| SHT45 VIN | 3V3 |
+| SHT45 GND | GND |
+| SHT45 SDA | GPIO21 |
+| SHT45 SCL | GPIO22 |
+| SHT45 3Vo, if present | Leave unconnected |
+| GPIO25 | 330-ohm resistor → blue LED anode |
+| Blue LED cathode | GND |
 
-Power the ESP32 development board through its USB connector. The sensor is supplied from the board's 3.3 V rail.
+Power the ESP32 through USB; the sensor uses the board's 3.3 V rail. The LED is active-high. Board identity, LED color, and resistor value describe the project hardware; the firmware directly establishes the GPIO assignments and bus settings.
 
-## Repository layout
+![ESP32 breadboard wiring with blue status LED and series resistor](docs/images/wired_led.jpg)
 
-```text
-esp32/
-    main.py                  Application startup and measurement loop
-    sht45.py                 Sensor communication, CRC validation and conversion
-tests/
-    test_sht45.py             Host-side CRC and sensor-driver unit tests
-docs/
-    images/
-        soldering.jpg
-        first_power_up.jpg
-        prototype-v01.jpg
-        first_run_v01.jpg
-README.md
-LICENSE
-```
-
-The original image copies are also retained under `docs/hardware.md/images/`. Despite its name, `hardware.md` is an existing directory, not a Markdown document. The images displayed here use `docs/images/`.
+*The LED circuit alongside the sensor connections.*
 
 ## Firmware behavior
 
-[`esp32/main.py`](esp32/main.py) initializes the I²C bus, prints the station ID and application version, then repeatedly calls `read_sensor(i2c)` and checks its validity flag. Valid measurements are printed to two decimal places. On a CRC mismatch, the application prints `[AER-C01]: CRC check failed` instead of measurement values. Both paths then sleep for five seconds.
+### Measurement cycle and LED state
 
-[`esp32/sht45.py`](esp32/sht45.py) sends command `0xFD` to address `0x44`, waits 20 ms, and reads six bytes. It prints the raw byte response for debugging and validates each pair of measurement bytes against its accompanying CRC before converting accepted values:
+[`main.py`](esp32/main.py) initializes I²C, prints the startup report, and sets the LED off before entering the loop. [`led.py`](esp32/led.py) configures GPIO25 as an output: `led_control(1)` sets it high; other values set it low.
+
+| Event | Serial output / handling | Blue LED |
+| --- | --- | --- |
+| Start of measurement loop | Startup information and station status | OFF until a valid measurement |
+| Both CRC checks pass | Temperature in °C and relative humidity in %, to two decimal places | ON |
+| Either CRC check fails | `[AER-C01]: CRC check failed`; discard the entire pair | OFF |
+| Measurement raises `OSError` | `[AER-C01]: I2C fault detected`; continue after the five-second wait | OFF |
+| Loop exits, including `KeyboardInterrupt` | Outer `finally` calls `led_control(0)` | OFF |
+
+The LED stays on between successful readings; it is a last-measurement status indicator, not a blinking heartbeat. A subsequent valid reading turns it on again after a handled fault. The error handler does not reset or reinitialize the I²C bus.
+
+The outer `try/finally` surrounds the measurement loop. Initialization occurs before it, and a hardware reset or power loss is not a Python cleanup path.
+
+### Sensor communication and CRC-8
+
+[`sht45.py`](esp32/sht45.py) sends command `0xFD` to `0x44`, waits 20 ms, and reads six bytes. It prints the raw response for debugging. `calculate_crc(data_bytes)` uses polynomial `0x31`, initial value `0xFF`, no reflection, and no final XOR.
+
+| Value | Data bytes | Received CRC |
+| --- | --- | --- |
+| Temperature | `data[0:2]` | `data[2]` |
+| Relative humidity | `data[3:5]` | `data[5]` |
+
+Both checks must pass. The driver returns `(temperature, humidity, True)` for an accepted pair, or `(None, None, False)` if either check fails. Accepted values use these conversions:
 
 ```text
 raw_temperature = data[0] * 256 + data[1]
 raw_humidity    = data[3] * 256 + data[4]
 
-temperature_C = -45 + 175 * raw_temperature / 65535
+temperature_C    = -45 + 175 * raw_temperature / 65535
 humidity_percent = -6 + 125 * raw_humidity / 65535
 ```
 
-### CRC validation and return values
+CRC validation checks data integrity, not measurement accuracy. Humidity is not clamped to 0–100%, and two decimal places describe display formatting rather than validated precision.
 
-`calculate_crc(data_bytes)` implements CRC-8 with polynomial `0x31`, initial value `0xFF`, no reflection, and no final XOR.
+## Installation and usage
 
-| Measurement | Bytes used to calculate CRC | Received CRC |
-| --- | --- | --- |
-| Temperature | `data[0:2]` (bytes 0 and 1) | `data[2]` |
-| Humidity | `data[3:5]` (bytes 3 and 4) | `data[5]` |
+### 1. Prepare the board
 
-Both checks must pass. `read_sensor(i2c)` returns `(temperature, humidity, True)` on success or `(None, None, False)` if either CRC check fails. Even if one value passes, the entire pair is discarded when the other fails. CRC validation checks data integrity; it does not establish measurement accuracy or calibration.
+Use a USB data cable and a compatible MicroPython installation. The initial prototype run recorded MicroPython 1.29.0. For a fresh installation, follow the official [ESP32_GENERIC instructions](https://micropython.org/download/ESP32_GENERIC/) for your board. Back up existing device files before replacing them. Install the CH340 driver if needed.
 
-I²C read/write exceptions are not caught yet and can still stop the application.
-
-The driver does not clamp humidity to the range 0–100%. Two displayed decimal places describe output formatting, not validated accuracy.
-
-## Installation
-
-### 1. Prepare the board and computer
-
-You need the wired prototype, a USB data cable, Python on your computer, and a compatible MicroPython installation on the ESP32. Install the CH340 driver if your operating system does not expose a serial port.
-
-The commands below are for Windows PowerShell, run from the repository root. Replace `COM3` with the port shown for your board. Close other serial monitors before connecting.
+Run these commands in Windows PowerShell from the repository root. Replace `COM3` with your board's port and close other serial monitors.
 
 ```powershell
 py -m pip install mpremote
 py -m mpremote connect list
-```
-
-If MicroPython is already installed and working, keep it. For a fresh board, use the official [ESP32_GENERIC firmware and installation instructions](https://micropython.org/download/ESP32_GENERIC/) for the classic ESP32. Select firmware compatible with your actual board. The recorded prototype runtime is MicroPython 1.29.0; other versions have not been validated by this project. Back up existing device files before installing firmware or replacing application files.
-
-### 2. Check sensor communication
-
-Open the MicroPython console:
-
-```powershell
 py -m mpremote connect COM3 repl
 ```
 
-Press `Ctrl+C` if a program is running, then enter:
+### 2. Check the sensor connection
+
+Press `Ctrl+C` to interrupt a running application, then enter in the MicroPython REPL:
 
 ```python
 from machine import I2C, Pin
@@ -126,74 +114,82 @@ i2c = I2C(0, sda=Pin(21), scl=Pin(22), freq=100000)
 print(i2c.scan())
 ```
 
-For this single-sensor setup, the expected result is `[68]`, corresponding to `0x44`. This confirms that a device responds at the expected address; it is not a calibration or full sensor diagnostic. Exit the console with `Ctrl+]`.
+The expected single-sensor result is `[68]`, corresponding to `0x44`. This checks that a device responds at that address; it is not a calibration. Exit the console with `Ctrl+]`.
 
-### 3. Upload both application files
+### 3. Upload all three application files
 
-Copy both files to the root of the ESP32 filesystem, not into an `esp32` subdirectory on the device:
+Save the files in your editor, then copy them to the **root of the ESP32 filesystem**:
 
 ```powershell
 py -m mpremote connect COM3 fs cp esp32/sht45.py :sht45.py
+py -m mpremote connect COM3 fs cp esp32/led.py :led.py
 py -m mpremote connect COM3 fs cp esp32/main.py :main.py
-```
-
-Save both files in your editor before uploading. These commands replace files with the same names on the device. Upload both files together: `main.py` now expects the three return values provided by the updated `sht45.py`. The `tests/` directory stays on the computer and is not uploaded to the ESP32.
-
-## Usage
-
-Open the serial console again:
-
-```powershell
 py -m mpremote connect COM3 repl
 ```
 
-Press the ESP32 reset button to start the installed application. During normal startup, MicroPython executes `main.py` automatically. The startup report includes:
+These commands replace same-named device files. `main.py` imports both `sht45` and `led`, so all three files are required. Keep `tests/` on the computer.
+
+### 4. Run and observe
+
+Press the board's reset button to start the installed application. The startup report is:
 
 ```text
 ============================================================
 AISTHETRON AER
 ============================================================
 [AER-C01] Station
-Firmware: 0.1.1
+Firmware: 0.1.3
 System initialized
 ```
 
-Each cycle then prints `[AER-C01] System active` and a raw `bytes` debug line. If both CRC checks pass, temperature and humidity readings follow, prefixed with `AER-C01:`. Otherwise, `[AER-C01]: CRC check failed` is printed and the measurement pair is discarded. Values change with the environment. The cycle takes slightly longer than five seconds because the sensor read and console output occur before the five-second sleep.
+Each cycle prints `[AER-C01] System active`. A completed sensor read also prints raw bytes, followed by either accepted measurements or a CRC failure message. I²C faults produce the error message listed above. Actual cycle duration is slightly longer than five seconds.
 
-Use `Ctrl+C` to interrupt the loop and access the REPL, or `Ctrl+]` to leave the console. A powered board can continue measuring without a computer, but the application does not save or transmit measurements beyond the serial output.
+Press `Ctrl+C` to stop the loop and turn the status LED off through `finally`. `Ctrl+]` leaves the serial console; it is not the application stop command. The powered board can measure without a computer, but the application does not save readings or transmit them beyond serial output.
 
 ### Troubleshooting
 
 | Symptom | Check |
 | --- | --- |
-| No serial port | USB data cable, CH340 driver, and board connection |
-| Port busy | Close other programs using the same serial port |
-| Scan returns `[]` | 3.3 V supply, common ground, SDA GPIO21, SCL GPIO22, and solder joints |
-| `ImportError` for `sht45` | Upload `sht45.py` to the device root alongside `main.py` |
-| `CRC check failed` | The pair was rejected; the next cycle runs after the five-second wait. If failures recur, inspect wiring and power. |
-| I²C error stops the loop | Inspect wiring and power, then restart; automatic recovery is not implemented |
-| No output after uploading | Reopen the console and press the board's reset button |
+| No serial port / port busy | USB data cable, CH340 driver, board connection, and other serial programs |
+| Scan returns `[]` | 3.3 V supply, common ground, SDA GPIO21, SCL GPIO22, solder joints |
+| `ImportError` for `sht45` or `led` on the board | Upload all three application files to the device root |
+| `CRC check failed` | The pair is rejected; inspect wiring and power if failures recur |
+| `I2C fault detected` | Check sensor wiring and power; the loop tries another measurement after five seconds |
+| Valid readings but LED remains off | GPIO25 connection, LED polarity, series resistor, common ground |
+| No output after upload | Reopen the console and press the board's reset button |
 
-## Automated tests
+## Repository layout
 
-Run the tests on your computer from the repository root:
+```text
+esp32/
+    main.py           Startup, measurement loop, error handling and LED integration
+    sht45.py          Sensor communication, CRC-8 validation and conversion
+    led.py            GPIO25 status LED driver
+tests/
+    test_sht45.py     CRC and sensor-driver checks
+    test_main.py      Simulated I2C-error recovery check
+docs/images/          README photos, including the two LED prototype photos
+README.md
+LICENSE
+```
+
+All README photos use relative paths under `docs/images/`. Older image copies remain under `docs/hardware.md/images/`; despite its name, `hardware.md` there is a directory.
+
+## Verification and tests
+
+Run the existing host-side suite from the repository root:
 
 ```powershell
 py -m unittest discover -s tests -v
 ```
 
-The suite uses Python's standard-library `unittest` and `unittest.mock`; no ESP32 connection is required. `FakeI2C` supplies fixed six-byte responses, and `time.sleep_ms` is patched because it is a MicroPython function unavailable in normal desktop Python.
+[`test_sht45.py`](tests/test_sht45.py) checks the known CRC vector (`0xBE 0xEF` → `0x92`), conversion of a valid packet, and rejection of corrupted temperature or humidity data. It uses a fake I²C interface and patches MicroPython's `time.sleep_ms` for desktop Python.
 
-The four tests in [`tests/test_sht45.py`](tests/test_sht45.py) cover:
+**Verification on 17 October 2026:** the four sensor tests passed. The existing [`test_main.py`](tests/test_main.py) failed to import `led` on desktop Python (`ModuleNotFoundError`): its test setup has not yet been adapted to the new LED module. The full suite therefore does not currently pass. This host-test setup issue is separate from deploying all three modules to the ESP32 root.
 
-- The known CRC reference: `0xBE 0xEF` produces `0x92`.
-- A valid packet returns `True` and the expected temperature and humidity within the asserted tolerance.
-- A modified temperature byte with an unchanged CRC rejects the entire pair.
-- A modified humidity byte with an unchanged CRC also rejects the entire pair.
+The firmware behavior described above was checked against the source. Host tests do not validate physical wiring, LED brightness, actual I²C communication, calibration, or long-term reliability.
 
-All four tests passed during local verification of this update. Raw byte lines in the test output come from the driver's debug print. These tests do not validate physical I²C communication, recovery from I²C exceptions, malformed packet lengths, the main loop, or long-term measurement accuracy.
-
-## Build and first run
+## Build history
 
 ### Sensor assembly
 
@@ -201,30 +197,41 @@ All four tests passed during local verification of this update. Raw byte lines i
 
 *Soldering the sensor breakout headers.*
 
+### Assembled prototype
+
+![AER-C01 prototype assembled and unpowered](docs/images/prototype-v01.jpg)
+
+*The original prototype before power-up and before the external status LED was added.*
+
 ### First power-up
 
 ![AER-C01 powered for the first time after assembly](docs/images/first_power_up.jpg)
 
 *First power-up after assembling the prototype.*
 
-### First successful operation — 16 October 2026
+### First successful measurement run — 16 October 2026
 
 ![AER-C01 operating alongside its serial console](docs/images/first_run_v01.jpg)
 
-*The prototype and console during the first successful measurement run.*
+*The earlier prototype milestone. The LED-equipped setup is shown at the top of this README.*
 
 ## Limitations and next steps
 
-| Current limitation | Intended improvement |
-| --- | --- |
-| I²C exceptions terminate the loop | Add error reporting, retries, and recovery |
-| No automatic startup sensor check | Add sensor presence checks and diagnostics |
-| Debug bytes and human-readable output only | Define a structured measurement format |
-| No timestamps or persistent storage | Add timestamped logging and data export |
-| No system calibration or reference comparison | Compare against a suitable reference and document uncertainty |
-| No long-term reliability assessment | Run extended stability tests |
+- Adapt the main-loop host test to the LED module and add explicit LED-state coverage.
+- Add startup sensor diagnostics and evaluate bus recovery for persistent I²C faults.
+- Validate malformed sensor responses; packet length is not explicitly checked today.
+- Replace debug-oriented output with structured, timestamped measurements and persistent storage.
+- Compare against a suitable reference and document uncertainty and long-term stability.
 
-These are planned improvements, not current capabilities. There is no wireless telemetry in the present application. AER-C01 remains an experimental learning and development platform.
+There is currently no wireless telemetry, persistent logging, or system calibration. These are future development areas, not implemented capabilities.
+
+## Development and credits
+
+AISTHETRON AER is developed by **Florian Erler** as a hands-on hardware and firmware project.
+
+The CRC-8 bit-operation function **`calculate_crc()` was provided by ChatGPT**, as also acknowledged in its source docstring.
+
+The **`led.py` LED driver and its integration into `main.py` were independently designed and written by the project developer**. ChatGPT's role in that work was limited to code review and feedback, not authorship or autonomous implementation. The existing I²C-recovery test also acknowledges ChatGPT assistance in its docstring.
 
 ## References
 
