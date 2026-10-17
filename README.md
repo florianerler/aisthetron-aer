@@ -2,83 +2,136 @@
 
 *Making the Invisible Measurable.*
 
-**AER-C01 · ESP32 + SHT45 · MicroPython · Application firmware v0.1.3**
+**AER-C01 · ESP32 + SHT45 · MicroPython · Five-channel status indication**
 
-AISTHETRON AER is an experimental environmental sensing project. Its first prototype, **AER-C01**, measures ambient temperature and relative humidity, validates sensor data with CRC-8, and indicates accepted measurements with a blue status LED.
+AISTHETRON AER is a hands-on environmental sensing project developed by Florian Erler. Its first station, **AER-C01**, measures ambient temperature and relative humidity, checks each sensor response with CRC-8, and reports accepted readings over the serial console. Five discrete LEDs provide measurement, standby and fault indications, with two channels reserved for future use.
 
-![AER-C01 measuring temperature and humidity with its blue status LED illuminated](docs/images/running_sensor_with_led.jpg)
+![AER-C01 expanded breadboard assembly with all five LEDs illuminated](docs/images/v0.1.4/all_leds_running.jpg)
 
-*The prototype in operation with serial output and the blue status LED. This photo records firmware v0.1.2; the current source reports v0.1.3.*
+*Photo set v0.1.4: all five LEDs illuminated during an assembly check. This is not a normal state produced by the current measurement loop, and the photograph alone does not establish which firmware was running.*
 
-[Hardware](#hardware-and-wiring) · [Firmware](#firmware-behavior) · [Setup](#installation-and-usage) · [Tests](#verification-and-tests) · [Build photos](#build-history) · [Credits](#development-and-credits)
+[Hardware](#hardware-and-wiring) · [Operation](#firmware-behavior) · [Setup](#installation-and-usage) · [Tests](#verification-and-tests) · [History](#build-history) · [Roadmap](#roadmap) · [Credits](#development-and-credits)
 
-## Current status
+## Version and project status
 
-The application prints valid temperature and humidity pairs to the serial console, rejects pairs with a failed CRC, and catches `OSError` during measurement. After either a handled error or a successful reading, it waits five seconds before the next cycle. An outer `try/finally` switches the LED off when execution leaves the measurement loop, including a `Ctrl+C` interruption.
+| Evidence | Status |
+| --- | --- |
+| Local application source | `esp32/main.py` declares **Firmware: 0.1.4** |
+| Latest committed application at review | **0.1.3**; the local five-channel LED changes are uncommitted on `feature/multiple-led-status` |
+| Last hardware-tested firmware reported by the developer | **v0.1.3**; full hardware validation of the current v0.1.4 source is not established |
+| New photographs | **v0.1.4 photo set**, supplied under `bilder/v0.1.4` and copied to `docs/images/v0.1.4/` |
+| Existing Git tags at review | `v0.1.0` only; source version strings and photo folders are not release tags |
 
-First successful operation was recorded on **16 October 2026**. This is a working development prototype, with no system calibration or long-term reliability assessment. Updating this README does not create a release or Git tag.
+This is a development prototype. First successful operation was recorded on **16 October 2026**. The version and test statements above were reviewed on **17 October 2026**. There is no system calibration or long-term reliability assessment. No functional Start/Stop button is implemented; the application starts its measurement loop automatically.
 
 ## Hardware and wiring
 
+### Architecture
+
+USB supplies the ESP32 development board and carries serial output. The board supplies the SHT45 breakout from **3.3 V** and reads it over I²C. Five independent, active-high GPIO outputs drive five LED branches, each with its own series resistor. The sensor and both LED groups share the ESP32 ground reference.
+
+```text
+USB power / serial
+        |
+      ESP32 ---- I2C0: SDA21 / SCL22 ---- SHT45 (0x44)
+        |                                  |
+        +---- 3V3 ------------------------- VIN
+        |
+        +---- GPIO25 -- resistor -- blue LED ---- GND
+        +---- GPIO19 -- resistor -- yellow LED -- GND
+        +---- GPIO26 -- resistor -- red LED ----- GND
+        +---- GPIO18 -- resistor -- green LED --- GND
+        +---- GPIO23 -- resistor -- white LED --- GND
+        |
+        +---- GND ----- shared ground ----------- SHT45 GND
+```
+
 | Component / setting | Prototype configuration |
 | --- | --- |
-| Controller | ESP32-D0WD-V3 development board |
-| USB-to-serial interface | CH340 |
+| Controller | ESP32 development board; ESP32-D0WD-V3 recorded in earlier project documentation |
+| USB-to-serial interface | CH340 family |
 | Runtime | MicroPython; 1.29.0 recorded for the initial successful run |
-| Sensor | Sensirion SHT45 breakout, 3.3 V supply and logic |
-| I²C | Controller 0, 100 kHz, address `0x44` (decimal `68`) |
-| SDA / SCL | GPIO21 / GPIO22 |
-| Status indicator | Blue LED on GPIO25 with a 330-ohm series resistor |
-| Station ID | `AER-C01` |
-| Application version | `0.1.3`, as reported by `esp32/main.py` |
-| Measurement timing | Five-second sleep per cycle, plus acquisition and console output time |
+| Sensor | Sensirion SHT45 temperature and relative-humidity breakout |
+| Bus | I²C controller 0, 100 kHz, address `0x44` (decimal `68`) |
+| Assembly | Adjacent solderless breadboards, jumper wires and five individual LED resistors |
+| Output | Serial console, temperature in °C and relative humidity in % |
 
-Disconnect power before wiring. The connections below describe this prototype's breakout; check the labels on your board.
+### Verified GPIO assignment
 
-| Connection | ESP32 / destination |
-| --- | --- |
-| SHT45 VIN | 3V3 |
-| SHT45 GND | GND |
-| SHT45 SDA | GPIO21 |
-| SHT45 SCL | GPIO22 |
-| SHT45 3Vo, if present | Leave unconnected |
-| GPIO25 | 330-ohm resistor → blue LED anode |
-| Blue LED cathode | GND |
+GPIO numbers below are ESP32 signal numbers, **not header positions or breadboard row numbers**. Bus settings are verified against [`main.py`](esp32/main.py), LED assignments against [`led.py`](esp32/led.py), and sensor address against [`sht45.py`](esp32/sht45.py). LED colors follow the developer's specified hardware mapping; photographs do not prove electrical continuity.
 
-Power the ESP32 through USB; the sensor uses the board's 3.3 V rail. The LED is active-high. Board identity, LED color, and resistor value describe the project hardware; the firmware directly establishes the GPIO assignments and bus settings.
+| Connection / role | ESP32 GPIO or supply | Driver function / wiring |
+| --- | --- | --- |
+| SHT45 VIN | 3V3 | Breakout power input |
+| SHT45 GND | GND | Common ground |
+| SHT45 SDA | GPIO21 | I²C data |
+| SHT45 SCL | GPIO22 | I²C clock |
+| SHT45 3Vo | Unconnected | Not needed for this connection scheme |
+| Blue — measurement | GPIO25 | `led_mi_control()` |
+| Yellow — standby | GPIO19 | `led_si_control()` |
+| Red — fault | GPIO26 | `led_ei_control()` |
+| Green — reserve 1 | GPIO18 | `led_i1_control()` |
+| White — reserve 2 | GPIO23 | `led_i2_control()` |
 
-![ESP32 breadboard wiring with blue status LED and series resistor](docs/images/wired_led.jpg)
+Each LED branch is **GPIO → its own resistor → LED anode; LED cathode → GND**. All driver functions set their output high for `1` and low otherwise. Do not share one resistor between multiple LEDs. The earlier single-blue-LED build documented **330 Ω**; the new photos show five resistors, but their exact installed values have not been independently measured. Confirm each value and the appropriate LED current before reproducing the assembly.
 
-*The LED circuit alongside the sensor connections.*
+### Breadboard layout and ground distribution
+
+![Expanded ESP32 and SHT45 breadboard layout with individual resistors before LEDs are fitted](docs/images/v0.1.4/new_hardware.jpg)
+
+*Photo set v0.1.4 — controller, sensor, signal routing and five individual resistors before LED installation.*
+
+The ESP32 spans the inner area of the adjacent boards, leaving accessible terminal strips on both sides. The SHT45 sits below the controller on the left board. In the assembled view, white, yellow and green occupy the left side; blue and red occupy the right. The close-up shows three resistor branches by GPIO18/19/23 and two by GPIO25/26.
+
+Ground jumpers distribute the board's GND to the outer ground rails; the sensor return and LED cathodes must connect to that common reference. Treat the left and right rails as separate until continuity is verified. Breadboard rails can also be split along their length: bridge a split where necessary and check it with power disconnected. Rail colors and wire colors are visual aids, not proof of a connection. Keep 3V3 separate from GND, and do not feed the sensor from the USB/VIN 5 V line in this documented wiring scheme.
+
+Use the pin table as the wiring reference rather than copying row numbers from a photograph. Disconnect USB power before changing wiring. Check LED polarity, resistor placement, rail continuity and the breakout's actual pin labels before power-up.
+
+<details>
+<summary>Additional pre-LED assembly photograph</summary>
+
+![Second supplied view of the hardware before LED assembly](docs/images/v0.1.4/hardware_before_led_assembly.jpg)
+
+*Original supplied photograph retained as part of the v0.1.4 assembly record.*
+
+</details>
 
 ## Firmware behavior
 
-### Measurement cycle and LED state
+### Operating and fault-state matrix
 
-[`main.py`](esp32/main.py) initializes I²C, prints the startup report, and sets the LED off before entering the loop. [`led.py`](esp32/led.py) configures GPIO25 as an output: `led_control(1)` sets it high; other values set it low.
+The table describes settled states after each branch has completed; GPIO writes are sequential. The startup yellow state may be brief because sampling begins immediately.
 
-| Event | Serial output / handling | Blue LED |
-| --- | --- | --- |
-| Start of measurement loop | Startup information and station status | OFF until a valid measurement |
-| Both CRC checks pass | Temperature in °C and relative humidity in %, to two decimal places | ON |
-| Either CRC check fails | `[AER-C01]: CRC check failed`; discard the entire pair | OFF |
-| Measurement raises `OSError` | `[AER-C01]: I2C fault detected`; continue after the five-second wait | OFF |
-| Loop exits, including `KeyboardInterrupt` | Outer `finally` calls `led_control(0)` | OFF |
+| Event / state | Blue 25 | Yellow 19 | Red 26 | Green 18 | White 23 | Behavior |
+| --- | --- | --- | --- | --- | --- | --- |
+| Initialization completed, before first read | OFF | ON | OFF | OFF | OFF | Print startup report; enter loop automatically |
+| Both CRC checks pass | ON | OFF | OFF | OFF | OFF | Print temperature and humidity to two decimals |
+| Either CRC fails | OFF | OFF | ON | OFF | OFF | Print `CRC check failed`; discard the entire pair |
+| Measurement raises `OSError` | OFF | OFF | ON | OFF | OFF | Print `I2C fault detected`; continue the loop |
+| Five-second wait / next acquisition | Retained | Retained | Retained | OFF | OFF | Keep the preceding state until the next result |
+| Valid reading after a handled fault | ON | OFF | OFF | OFF | OFF | Resume normal measurement indication |
+| Loop exits, including `Ctrl+C` | OFF | ON | OFF | OFF | OFF | Outer `finally` restores the standby indication |
 
-The LED stays on between successful readings; it is a last-measurement status indicator, not a blinking heartbeat. A subsequent valid reading turns it on again after a handled fault. The error handler does not reset or reinitialize the I²C bus.
+Blue means **the last accepted reading was valid**; it is not a pulse or heartbeat. Yellow is not selected during each five-second sleep. Green and white have driver functions but are explicitly kept off by `main.py`. An all-LEDs-on photograph therefore demonstrates a separate LED check, not an implemented operating mode.
 
-The outer `try/finally` surrounds the measurement loop. Initialization occurs before it, and a hardware reset or power loss is not a Python cleanup path.
+### Error handling and restart
 
-### Sensor communication and CRC-8
+Each loop reports `[AER-C01] System active`, calls the sensor driver, handles a CRC rejection or `OSError`, then sleeps for five seconds. The actual period includes acquisition and console output time. After a handled fault, another read is attempted automatically; a valid response clears the red indication. There is no I²C reset, bus reinitialization, retry limit or backoff.
 
-[`sht45.py`](esp32/sht45.py) sends command `0xFD` to `0x44`, waits 20 ms, and reads six bytes. It prints the raw response for debugging. `calculate_crc(data_bytes)` uses polynomial `0x31`, initial value `0xFF`, no reflection, and no final XOR.
+The outer `try/finally` covers the loop, but not imports, I²C construction or initial LED setup. Unhandled exceptions inside the loop also run `finally` and then propagate: **yellow does not prove a fault-free shutdown**. Initialization failures, hardware reset and power loss are not covered by that cleanup guarantee. Short packets are not explicitly checked and can raise `IndexError`; humidity is not clamped to 0–100%.
 
-| Value | Data bytes | Received CRC |
+After `Ctrl+C`, restart the installed application with the board's reset button. There is no external Start/Stop input, button polling or debouncing in the current code.
+
+### SHT45 acquisition and CRC-8
+
+The driver writes `0xFD` to address `0x44`, waits **20 ms**, reads **six bytes**, and prints the raw response for debugging. It checks the temperature and humidity words separately:
+
+| Quantity | Data bytes | Received CRC |
 | --- | --- | --- |
 | Temperature | `data[0:2]` | `data[2]` |
 | Relative humidity | `data[3:5]` | `data[5]` |
 
-Both checks must pass. The driver returns `(temperature, humidity, True)` for an accepted pair, or `(None, None, False)` if either check fails. Accepted values use these conversions:
+`calculate_crc()` uses **polynomial `0x31`, initial value `0xFF`, no reflection and no final XOR**, retaining eight bits after each shift. Both checks must pass. Success returns `(temperature, humidity, True)`; a CRC mismatch returns `(None, None, False)`.
 
 ```text
 raw_temperature = data[0] * 256 + data[1]
@@ -88,7 +141,7 @@ temperature_C    = -45 + 175 * raw_temperature / 65535
 humidity_percent = -6 + 125 * raw_humidity / 65535
 ```
 
-CRC validation checks data integrity, not measurement accuracy. Humidity is not clamped to 0–100%, and two decimal places describe display formatting rather than validated precision.
+CRC validates transferred data, not sensor accuracy or system calibration. Displaying two decimal places does not establish that measurement precision.
 
 ## Installation and usage
 
@@ -138,13 +191,13 @@ Press the board's reset button to start the installed application. The startup r
 AISTHETRON AER
 ============================================================
 [AER-C01] Station
-Firmware: 0.1.3
+Firmware: 0.1.4
 System initialized
 ```
 
 Each cycle prints `[AER-C01] System active`. A completed sensor read also prints raw bytes, followed by either accepted measurements or a CRC failure message. I²C faults produce the error message listed above. Actual cycle duration is slightly longer than five seconds.
 
-Press `Ctrl+C` to stop the loop and turn the status LED off through `finally`. `Ctrl+]` leaves the serial console; it is not the application stop command. The powered board can measure without a computer, but the application does not save readings or transmit them beyond serial output.
+Press `Ctrl+C` to stop the loop: `finally` turns blue and red off and yellow on. `Ctrl+]` leaves the serial console; it is not the application stop command. The powered board can measure without a computer, but the application does not save readings or transmit them beyond serial output.
 
 ### Troubleshooting
 
@@ -155,39 +208,49 @@ Press `Ctrl+C` to stop the loop and turn the status LED off through `finally`. `
 | `ImportError` for `sht45` or `led` on the board | Upload all three application files to the device root |
 | `CRC check failed` | The pair is rejected; inspect wiring and power if failures recur |
 | `I2C fault detected` | Check sensor wiring and power; the loop tries another measurement after five seconds |
-| Valid readings but LED remains off | GPIO25 connection, LED polarity, series resistor, common ground |
+| Unexpected LED state | Assigned GPIO, LED polarity, individual series resistor, common ground |
 | No output after upload | Reopen the console and press the board's reset button |
 
 ## Repository layout
 
 ```text
 esp32/
-    main.py           Startup, measurement loop, error handling and LED integration
-    sht45.py          Sensor communication, CRC-8 validation and conversion
-    led.py            GPIO25 status LED driver
+    main.py           Startup, measurement loop, fault handling and LED integration
+    sht45.py          I2C acquisition, CRC-8 validation and conversion
+    led.py            Five independent active-high LED outputs
 tests/
-    test_sht45.py     CRC and sensor-driver checks
-    test_main.py      Simulated I2C-error recovery check
-docs/images/          README photos, including the two LED prototype photos
+    test_sht45.py      CRC vector, conversion and corrupted-packet checks
+    test_main.py       Simulated I2C recovery test; currently blocked by LED import
+docs/images/
+    v0.1.4/           Three new hardware assembly photographs
+    *.jpg             Earlier prototype and single-LED photographs
 README.md
 LICENSE
 ```
 
-All README photos use relative paths under `docs/images/`. Older image copies remain under `docs/hardware.md/images/`; despite its name, `hardware.md` there is a directory.
+All README images use repository-relative paths. Older copies under `docs/hardware.md/images/` are preserved; despite its name, `hardware.md` there is a directory.
 
 ## Verification and tests
 
-Run the existing host-side suite from the repository root:
+Run the existing host suite from the repository root:
 
 ```powershell
-py -m unittest discover -s tests -v
+py -B -m unittest discover -s tests -v
 ```
 
-[`test_sht45.py`](tests/test_sht45.py) checks the known CRC vector (`0xBE 0xEF` → `0x92`), conversion of a valid packet, and rejection of corrupted temperature or humidity data. It uses a fake I²C interface and patches MicroPython's `time.sleep_ms` for desktop Python.
+| Check | Evidence / result on 17 October 2026 |
+| --- | --- |
+| CRC known vector | PASS: `0xBE 0xEF` → `0x92` |
+| Valid sensor packet conversion | PASS |
+| Corrupted temperature rejection | PASS |
+| Corrupted humidity rejection | PASS |
+| Main-loop I2C recovery test | ERROR: `ModuleNotFoundError: No module named 'led'` during import |
+| Five-channel state matrix | Reviewed against source; no dedicated passing automated LED-state coverage |
+| Earlier hardware operation | v0.1.3 is the last hardware-tested firmware reported by the developer |
+| Expanded LED assembly | v0.1.4 photos show all five external LEDs illuminated; this does not verify full firmware behavior |
+| Current v0.1.4 hardware fault/recovery and stop tests | Not independently verified in this documentation update |
 
-**Verification on 17 October 2026:** the four sensor tests passed. The existing [`test_main.py`](tests/test_main.py) failed to import `led` on desktop Python (`ModuleNotFoundError`): its test setup has not yet been adapted to the new LED module. The full suite therefore does not currently pass. This host-test setup issue is separate from deploying all three modules to the ESP32 root.
-
-The firmware behavior described above was checked against the source. Host tests do not validate physical wiring, LED brightness, actual I²C communication, calibration, or long-term reliability.
+**Suite result: four tests pass; one errors.** The desktop test fixture does not yet accommodate the board-style `led` import. This does not establish a device import failure when all three modules are installed at the ESP32 filesystem root. The sensor tests use fake I²C responses and a patched `sleep_ms`; they do not exercise a real bus. No firmware was uploaded and no physical hardware test was performed during this review.
 
 ## Build history
 
@@ -213,33 +276,42 @@ The firmware behavior described above was checked against the source. Host tests
 
 ![AER-C01 operating alongside its serial console](docs/images/first_run_v01.jpg)
 
-*The earlier prototype milestone. The LED-equipped setup is shown at the top of this README.*
+*The earlier prototype milestone. The expanded five-LED assembly is shown at the top of this README.*
 
-## Limitations and next steps
 
-- Adapt the main-loop host test to the LED module and add explicit LED-state coverage.
-- Add startup sensor diagnostics and evaluate bus recovery for persistent I²C faults.
-- Validate malformed sensor responses; packet length is not explicitly checked today.
-- Replace debug-oriented output with structured, timestamped measurements and persistent storage.
-- Compare against a suitable reference and document uncertainty and long-term stability.
+### Earlier single-LED prototype
 
-There is currently no wireless telemetry, persistent logging, or system calibration. These are future development areas, not implemented capabilities.
+![Earlier prototype with the blue measurement LED and serial console](docs/images/running_sensor_with_led.jpg)
+
+*Earlier photograph recording firmware v0.1.2, retained as a development milestone.*
+
+![Earlier single-blue-LED circuit with series resistor](docs/images/wired_led.jpg)
+
+*The original single-channel LED wiring, superseded by the five-channel assembly above.*
+
+## Roadmap
+
+- Repair the main-loop host-test fixture and add coverage for all LED states, CRC failure, I²C recovery and cleanup.
+- Record a complete v0.1.4 hardware test: each channel, valid sampling, fault indication, restored sensor communication and `Ctrl+C` behavior.
+- Document measured resistor values and a continuity-checked wiring diagram for the expanded breadboard.
+- Add explicit malformed-response handling and startup sensor diagnostics; evaluate recovery from persistent bus faults.
+- Design and test a Start/Stop button and explicit operating states before describing them as supported features.
+- Introduce structured, timestamped readings and persistent storage; evaluate wireless telemetry.
+- Compare readings against a suitable reference and assess uncertainty, enclosure effects and long-term stability.
+
+Wireless telemetry, persistent logging, a functional Start/Stop button and system calibration are not implemented in the current application.
 
 ## Development and credits
 
-AISTHETRON AER is developed by **Florian Erler** as a hands-on hardware and firmware project.
-
-The CRC-8 bit-operation function **`calculate_crc()` was provided by ChatGPT**, as also acknowledged in its source docstring.
-
-The **`led.py` LED driver and its integration into `main.py` were independently designed and written by the project developer**. ChatGPT's role in that work was limited to code review and feedback, not authorship or autonomous implementation. The existing I²C-recovery test also acknowledges ChatGPT assistance in its docstring.
+AISTHETRON AER is developed by **Florian Erler**. The CRC-8 bit-operation function **`calculate_crc()` was created by ChatGPT**, as acknowledged in its source docstring. The **multi-channel LED driver and its integration into `main.py` were implemented independently and autonomously by the developer**; ChatGPT provided only review and feedback for that work. The existing I²C-recovery test separately acknowledges ChatGPT assistance.
 
 ## References
 
 - [MicroPython documentation](https://docs.micropython.org/)
-- [MicroPython ESP32_GENERIC firmware](https://micropython.org/download/ESP32_GENERIC/)
-- [mpremote usage documentation](https://docs.micropython.org/en/latest/reference/mpremote.html)
+- [MicroPython ESP32_GENERIC installation](https://micropython.org/download/ESP32_GENERIC/)
+- [Official mpremote usage documentation](https://docs.micropython.org/en/latest/reference/mpremote.html)
 - [Sensirion SHT45 product information](https://sensirion.com/products/catalog/SHT45)
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE). Copyright © 2026 Florian Erler.
+[MIT License](LICENSE) · Copyright © 2026 Florian Erler.
