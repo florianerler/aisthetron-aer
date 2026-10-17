@@ -2,7 +2,7 @@
 
 *Making the Invisible Measurable.*
 
-**AER-C01 · ESP32 + SHT45 · MicroPython · Five-channel status indication**
+**AER-C01 · ESP32 + SHT45 · MicroPython · Application firmware v0.1.5**
 
 AISTHETRON AER is a hands-on environmental sensing project developed by Florian Erler. Its first station, **AER-C01**, measures ambient temperature and relative humidity, checks each sensor response with CRC-8, and reports accepted readings over the serial console. Five discrete LEDs provide measurement, standby and fault indications, with two channels reserved for future use.
 
@@ -16,13 +16,13 @@ AISTHETRON AER is a hands-on environmental sensing project developed by Florian 
 
 | Evidence | Status |
 | --- | --- |
-| Local application source | `esp32/main.py` declares **Firmware: 0.1.4** |
-| Latest committed application at review | **0.1.3**; the local five-channel LED changes are uncommitted on `feature/multiple-led-status` |
-| Last hardware-tested firmware reported by the developer | **v0.1.3**; full hardware validation of the current v0.1.4 source is not established |
+| Local application source | `esp32/main.py` declares **Firmware: 0.1.5** |
+| Development milestone | v0.1.4 introduced five dedicated LED control functions; v0.1.5 replaces them with one complete-state call and validates the argument count |
+| Latest demonstrated hardware operation | **v0.1.5** startup and three accepted measurement pairs in developer-supplied serial output; LED transitions, fault recovery and long-duration operation remain unverified for this version |
 | New photographs | **v0.1.4 photo set**, supplied under `bilder/v0.1.4` and copied to `docs/images/v0.1.4/` |
 | Existing Git tags at review | `v0.1.0` only; source version strings and photo folders are not release tags |
 
-This is a development prototype. First successful operation was recorded on **16 October 2026**. The version and test statements above were reviewed on **17 October 2026**. There is no system calibration or long-term reliability assessment. No functional Start/Stop button is implemented; the application starts its measurement loop automatically.
+This is a development prototype. First successful operation was recorded on **16 October 2026**. The version and test statements above were reviewed on **18 October 2026**. There is no system calibration or long-term reliability assessment. No functional Start/Stop button is implemented; the application starts its measurement loop automatically.
 
 ## Hardware and wiring
 
@@ -60,20 +60,20 @@ USB power / serial
 
 GPIO numbers below are ESP32 signal numbers, **not header positions or breadboard row numbers**. Bus settings are verified against [`main.py`](esp32/main.py), LED assignments against [`led.py`](esp32/led.py), and sensor address against [`sht45.py`](esp32/sht45.py). LED colors follow the developer's specified hardware mapping; photographs do not prove electrical continuity.
 
-| Connection / role | ESP32 GPIO or supply | Driver function / wiring |
+| Connection / role | ESP32 GPIO or supply | Argument index / wiring |
 | --- | --- | --- |
 | SHT45 VIN | 3V3 | Breakout power input |
 | SHT45 GND | GND | Common ground |
 | SHT45 SDA | GPIO21 | I²C data |
 | SHT45 SCL | GPIO22 | I²C clock |
 | SHT45 3Vo | Unconnected | Not needed for this connection scheme |
-| Blue — measurement | GPIO25 | `led_mi_control()` |
-| Yellow — standby | GPIO19 | `led_si_control()` |
-| Red — fault | GPIO26 | `led_ei_control()` |
-| Green — reserve 1 | GPIO18 | `led_i1_control()` |
-| White — reserve 2 | GPIO23 | `led_i2_control()` |
+| Blue — measurement | GPIO25 | `led[3]` in `led_control(*led)` |
+| Yellow — standby | GPIO19 | `led[1]` in `led_control(*led)` |
+| Red — fault | GPIO26 | `led[4]` in `led_control(*led)` |
+| Green — reserve 1 | GPIO18 | `led[0]` in `led_control(*led)` |
+| White — reserve 2 | GPIO23 | `led[2]` in `led_control(*led)` |
 
-Each LED branch is **GPIO → its own resistor → LED anode; LED cathode → GND**. All driver functions set their output high for `1` and low otherwise. Do not share one resistor between multiple LEDs. The earlier single-blue-LED build documented **330 Ω**; the new photos show five resistors, but their exact installed values have not been independently measured. Confirm each value and the appropriate LED current before reproducing the assembly.
+Each LED branch is **GPIO → its own resistor → LED anode; LED cathode → GND**. The driver sets each output high when its corresponding value equals `1`, and low otherwise. Do not share one resistor between multiple LEDs. The earlier single-blue-LED build documented **330 Ω**; the new photos show five resistors, but their exact installed values have not been independently measured. Confirm each value and the appropriate LED current before reproducing the assembly.
 
 ### Breadboard layout and ground distribution
 
@@ -98,6 +98,23 @@ Use the pin table as the wiring reference rather than copying row numbers from a
 
 ## Firmware behavior
 
+### LED driver interface — v0.1.5
+
+`led_control(*led)` collects exactly five positional arguments into a tuple, in this order: **green, yellow, white, blue, red** (GPIO18, GPIO19, GPIO23, GPIO25, GPIO26). Each call sets all five outputs; the GPIO writes happen sequentially, not simultaneously.
+
+```python
+from led import led_control
+
+led_control(0, 1, 0, 0, 0)  # Standby: yellow
+led_control(0, 0, 0, 1, 0)  # Accepted measurement: blue
+led_control(0, 0, 0, 0, 1)  # CRC or I2C fault: red
+led_control(0, 0, 0, 0, 0)  # All off (available, not used by main.py)
+```
+
+Before any output is written by the function, `len(led)` must equal five. Otherwise it raises `ValueError("Expected 5 arguments, got N")`, with `N` replaced by the actual count. Both too few and too many arguments are rejected. This prevents an invalid-length call from partially changing the LEDs. The pins themselves are configured as outputs when the module is imported.
+
+Argument values are not separately validated: a value equal to `1` switches its LED on; all other values switch it off. Callers should use `0` and `1`. A tuple can be passed by unpacking it, for example `led_control(*states)`; `led_control(states)` passes only one argument and is rejected.
+
 ### Operating and fault-state matrix
 
 The table describes settled states after each branch has completed; GPIO writes are sequential. The startup yellow state may be brief because sampling begins immediately.
@@ -112,13 +129,15 @@ The table describes settled states after each branch has completed; GPIO writes 
 | Valid reading after a handled fault | ON | OFF | OFF | OFF | OFF | Resume normal measurement indication |
 | Loop exits, including `Ctrl+C` | OFF | ON | OFF | OFF | OFF | Outer `finally` restores the standby indication |
 
-Blue means **the last accepted reading was valid**; it is not a pulse or heartbeat. Yellow is not selected during each five-second sleep. Green and white have driver functions but are explicitly kept off by `main.py`. An all-LEDs-on photograph therefore demonstrates a separate LED check, not an implemented operating mode.
+Blue means **the last accepted reading was valid**; it is not a pulse or heartbeat. Yellow is not selected during each five-second sleep. Green and white are controllable through the same function but are explicitly kept off by `main.py`. An all-LEDs-on photograph therefore demonstrates a separate LED check, not an implemented operating mode.
 
 ### Error handling and restart
 
 Each loop reports `[AER-C01] System active`, calls the sensor driver, handles a CRC rejection or `OSError`, then sleeps for five seconds. The actual period includes acquisition and console output time. After a handled fault, another read is attempted automatically; a valid response clears the red indication. There is no I²C reset, bus reinitialization, retry limit or backoff.
 
 The outer `try/finally` covers the loop, but not imports, I²C construction or initial LED setup. Unhandled exceptions inside the loop also run `finally` and then propagate: **yellow does not prove a fault-free shutdown**. Initialization failures, hardware reset and power loss are not covered by that cleanup guarantee. Short packets are not explicitly checked and can raise `IndexError`; humidity is not clamped to 0–100%.
+
+An argument-count `ValueError` is not caught by `except OSError`. If raised inside the loop, cleanup runs and the exception propagates; the application does not automatically resume after that programming error.
 
 After `Ctrl+C`, restart the installed application with the board's reset button. There is no external Start/Stop input, button polling or debouncing in the current code.
 
@@ -191,7 +210,7 @@ Press the board's reset button to start the installed application. The startup r
 AISTHETRON AER
 ============================================================
 [AER-C01] Station
-Firmware: 0.1.4
+Firmware: 0.1.5
 System initialized
 ```
 
@@ -217,7 +236,7 @@ Press `Ctrl+C` to stop the loop: `finally` turns blue and red off and yellow on.
 esp32/
     main.py           Startup, measurement loop, fault handling and LED integration
     sht45.py          I2C acquisition, CRC-8 validation and conversion
-    led.py            Five independent active-high LED outputs
+    led.py            Complete-state LED control with five-argument validation
 tests/
     test_sht45.py      CRC vector, conversion and corrupted-packet checks
     test_main.py       Simulated I2C recovery test; currently blocked by LED import
@@ -238,7 +257,7 @@ Run the existing host suite from the repository root:
 py -B -m unittest discover -s tests -v
 ```
 
-| Check | Evidence / result on 17 October 2026 |
+| Check | Evidence / result on 18 October 2026 |
 | --- | --- |
 | CRC known vector | PASS: `0xBE 0xEF` → `0x92` |
 | Valid sensor packet conversion | PASS |
@@ -246,11 +265,24 @@ py -B -m unittest discover -s tests -v
 | Corrupted humidity rejection | PASS |
 | Main-loop I2C recovery test | ERROR: `ModuleNotFoundError: No module named 'led'` during import |
 | Five-channel state matrix | Reviewed against source; no dedicated passing automated LED-state coverage |
-| Earlier hardware operation | v0.1.3 is the last hardware-tested firmware reported by the developer |
+| Current hardware measurement run | Developer-supplied v0.1.5 console output shows successful startup and three accepted temperature/humidity pairs |
+| Argument-count validation | Present in source before output writes; no dedicated automated LED-driver test in the current suite |
 | Expanded LED assembly | v0.1.4 photos show all five external LEDs illuminated; this does not verify full firmware behavior |
-| Current v0.1.4 hardware fault/recovery and stop tests | Not independently verified in this documentation update |
+| Current v0.1.5 LED transitions, hardware fault/recovery and stop tests | Not yet confirmed by the supplied test evidence |
 
-**Suite result: four tests pass; one errors.** The desktop test fixture does not yet accommodate the board-style `led` import. This does not establish a device import failure when all three modules are installed at the ESP32 filesystem root. The sensor tests use fake I²C responses and a patched `sleep_ms`; they do not exercise a real bus. No firmware was uploaded and no physical hardware test was performed during this review.
+**Suite result: four tests pass; one errors.** The desktop test fixture does not yet accommodate the board-style `led` import. This does not establish a device import failure when all three modules are installed at the ESP32 filesystem root. The sensor tests use fake I²C responses and a patched `sleep_ms`; they do not exercise a real bus. The v0.1.5 measurement evidence comes from the developer's supplied console transcript; no firmware was uploaded or physical hardware test performed as part of this documentation review.
+
+### Observed v0.1.5 measurement run
+
+The developer supplied a startup report identifying `Firmware: 0.1.5`, followed by these three accepted pairs:
+
+| Cycle | Temperature (°C) | Relative humidity (%) |
+| --- | --- | --- |
+| 1 | 24.28 | 52.73 |
+| 2 | 24.31 | 55.59 |
+| 3 | 24.31 | 53.66 |
+
+In the current source, measurement lines are printed only after both CRC checks pass. This transcript demonstrates repeated measurement operation; it does not establish calibration, physical LED states or fault recovery.
 
 ## Build history
 
@@ -291,8 +323,9 @@ py -B -m unittest discover -s tests -v
 
 ## Roadmap
 
-- Repair the main-loop host-test fixture and add coverage for all LED states, CRC failure, I²C recovery and cleanup.
-- Record a complete v0.1.4 hardware test: each channel, valid sampling, fault indication, restored sensor communication and `Ctrl+C` behavior.
+- Repair the main-loop host-test fixture and add coverage for all LED states, invalid argument counts, CRC failure, I²C recovery and cleanup.
+- Consider named display states and explicit LED-value validation to make the interface easier to maintain.
+- Record a complete v0.1.5 hardware test: each channel, valid sampling, fault indication, restored sensor communication and `Ctrl+C` behavior.
 - Document measured resistor values and a continuity-checked wiring diagram for the expanded breadboard.
 - Add explicit malformed-response handling and startup sensor diagnostics; evaluate recovery from persistent bus faults.
 - Design and test a Start/Stop button and explicit operating states before describing them as supported features.
@@ -303,7 +336,7 @@ Wireless telemetry, persistent logging, a functional Start/Stop button and syste
 
 ## Development and credits
 
-AISTHETRON AER is developed by **Florian Erler**. The CRC-8 bit-operation function **`calculate_crc()` was created by ChatGPT**, as acknowledged in its source docstring. The **multi-channel LED driver and its integration into `main.py` were implemented independently and autonomously by the developer**; ChatGPT provided only review and feedback for that work. The existing I²C-recovery test separately acknowledges ChatGPT assistance.
+AISTHETRON AER is developed by **Florian Erler**. The CRC-8 bit-operation function **`calculate_crc()` was created by ChatGPT**, as acknowledged in its source docstring. The **original multi-channel LED driver and its integration into `main.py` were implemented independently by the developer**, with ChatGPT providing review and feedback. The developer also designed and implemented the v0.1.5 consolidation into `led_control(*led)`; ChatGPT provided review and specific assistance with Python syntax, argument packing/indexing and argument-count validation. The existing I²C-recovery test separately acknowledges ChatGPT assistance.
 
 ## References
 
