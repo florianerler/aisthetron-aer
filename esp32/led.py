@@ -18,6 +18,9 @@ led driver, gets input via tuple
 def led_control(*led):
     if len(led) != 5:
         raise ValueError("Expected 5 arguments, got {}".format(len(led)))
+    for value in led:
+        if value not in (0, 1):
+            raise ValueError("Expected 0 or 1, got {}".format(value))
     if led[0] == 1:
         led_p_18.value(1)
     else:
