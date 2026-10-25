@@ -26,4 +26,4 @@ class TestLedControl(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.driver.led_control(1, 0, 0, 0, 2)
         for pin in self.pins.values():
-            pin.values.assert_not_called()
+            pin.value.assert_not_called()
