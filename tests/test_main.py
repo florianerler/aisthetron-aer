@@ -4,14 +4,6 @@ import sys
 import unittest
 from types import ModuleType
 from unittest.mock import Mock, patch
-from esp32 import sht45
-
-#definitions:
-import importlib
-import sys
-import unittest
-from types import ModuleType
-from unittest.mock import Mock, patch
 
 from esp32 import sht45
 
@@ -30,6 +22,8 @@ class TestMain(unittest.TestCase):
             "machine": fake_machine,
             "sht45": sht45,
         }):
+            # led.py needs the fake machine module, so import it inside the patch
+            sys.modules["led"] = importlib.import_module("esp32.led")
             app = importlib.import_module("esp32.main")
 
         with (
