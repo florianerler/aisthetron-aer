@@ -1,10 +1,4 @@
-#imports:
-import importlib
-import sys
-import unittest
-from types import ModuleType
-from unittest.mock import Mock, patch
-from esp32 import sht45
+
 
 #definitions:
 import importlib
