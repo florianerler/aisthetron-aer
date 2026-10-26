@@ -2,15 +2,15 @@
 
 *Making the Invisible Measurable.*
 
-**AER-C01 · ESP32 + SHT45 · MicroPython · Firmware v0.1.5**
+**AER-C01 · ESP32 + SHT45 · MicroPython · Firmware v0.1.6**
 
-AISTHETRON AER is a hands-on environmental sensing project by Florian Erler. Its first station, **AER-C01**, measures temperature and relative humidity, validates every sensor response with CRC-8 and prints accepted readings to the serial console. Five LEDs show standby, measurement and fault states; two of them are reserved for future use.
+AISTHETRON AER is a hands-on environmental sensing project by Florian Erler. Its first station, **AER-C01**, measures temperature and relative humidity, validates every sensor response with CRC-8 and prints accepted readings with a timestamp to the serial console. Five LEDs show standby, measurement and fault states; two of them are reserved for future use.
 
 ![AER-C01 breadboard assembly with all five LEDs illuminated](docs/images/v0.1.4/all_leds_running.jpg)
 
 *LED check with all five LEDs on. This is not a state used by the firmware.*
 
-This is a development prototype: no calibration, no data logging, no wireless transmission.
+This is a development prototype: no calibration, no data logging, no wireless transmission, no time synchronisation.
 
 ## Hardware
 
@@ -47,6 +47,13 @@ Each LED: **GPIO → resistor → LED anode, cathode → GND**. Power the sensor
 | `esp32/main.py` | Startup report, measurement loop, error handling |
 | `esp32/sht45.py` | I²C measurement, CRC-8 check, conversion to °C and % |
 | `esp32/led.py` | `led_control()` sets all five LEDs at once |
+| `esp32/timestamp.py` | `get_timestamp()` returns Unix time and a sync status |
+
+### Timestamp
+
+`get_timestamp()` returns a tuple `(unix_time, status)`. MicroPython on the ESP32 counts seconds since 2000-01-01, so the function adds an offset of 946684800 s to get Unix time (since 1970). `status` is `"sync"` if the result is at or after 1 January 2024 (00:00 CET) and `"async"` otherwise.
+
+The clock is not synchronised yet: without NTP, the board starts at the year 2000 after every reset and reports `"async"`. The status is a plausibility check, not proof that the time is correct.
 
 ### LED control
 
@@ -65,7 +72,7 @@ Every five seconds the station reads the sensor:
 | Situation | LED | Console |
 | --- | --- | --- |
 | Startup | yellow | startup report |
-| Both CRC checks pass | blue | temperature and humidity |
+| Both CRC checks pass | blue | temperature, humidity and timestamp |
 | CRC check fails | red | `CRC check failed` |
 | I²C error (`OSError`) | red | `I2C fault detected` |
 | Loop stops (e.g. `Ctrl+C`) | yellow | – |
@@ -80,6 +87,7 @@ Run in PowerShell from the repository root and replace `COM3` with your port:
 py -m pip install mpremote
 py -m mpremote connect COM3 fs cp esp32/sht45.py :sht45.py
 py -m mpremote connect COM3 fs cp esp32/led.py :led.py
+py -m mpremote connect COM3 fs cp esp32/timestamp.py :timestamp.py
 py -m mpremote connect COM3 fs cp esp32/main.py :main.py
 py -m mpremote connect COM3 repl
 ```
@@ -105,6 +113,7 @@ py -B -m unittest discover -s tests -v
 | `tests/test_sht45.py` | CRC calculation, conversion, corrupted packets |
 | `tests/test_led.py` | LED states, rejection of invalid values |
 | `tests/test_main.py` | Recovery after an I²C error |
+| `tests/test_timestamp.py` | Epoch conversion, sync threshold |
 
 ## Build history
 
@@ -122,7 +131,9 @@ py -B -m unittest discover -s tests -v
 - Handle short or malformed sensor responses
 - Hardware test of all LED states and fault recovery
 - Start/Stop button
-- Timestamped readings, storage and wireless transmission
+- Structured measurement record (e.g. JSON)
+- WiFi and NTP time synchronisation
+- Storage and wireless transmission (MQTT)
 - Comparison against a reference sensor
 
 ## Credits

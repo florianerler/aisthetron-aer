@@ -16,10 +16,11 @@ import time
 from machine import I2C, Pin
 from sht45 import read_sensor
 from led import led_control
+from timestamp import get_timestamp
 
 #variables:
-station_id = "AER-C01"
-firmware_version = "Firmware: 0.1.5"
+STATION_ID = "AER-C01"
+FIRMWARE_VERSION = "Firmware: 0.1.6"
 
 #definitions:
 def start_report():
@@ -29,15 +30,15 @@ def start_report():
     print("=" * 60)
     print("AISTHETRON AER")
     print("=" * 60)
-    print(f"[{station_id}] Station")
-    print(firmware_version)
+    print(f"[{STATION_ID}] Station")
+    print(FIRMWARE_VERSION)
     print("System initialized")
 
 def status_report():
     """
     Display the status of AISTHETRON AER.
     """
-    print(f"[{station_id}] System active")
+    print(f"[{STATION_ID}] System active")
 
 def main():
     """
@@ -52,14 +53,16 @@ def main():
             try:
                 temperature, humidity, valid = read_sensor(i2c)
                 if valid:
-                    print(f"{station_id}: Temperature: {temperature:.2f} C")
-                    print(f"{station_id}: Humidity: {humidity:.2f} %")
+                    timestamp = get_timestamp()
+                    print(f"{STATION_ID}: Temperature: {temperature:.2f} C")
+                    print(f"{STATION_ID}: Humidity: {humidity:.2f} %")
+                    print(f"{STATION_ID}: Timestamp: {timestamp}")
                     led_control(0, 0, 0, 1, 0)
                 else:
-                    print(f"[{station_id}]: CRC check failed")
+                    print(f"[{STATION_ID}]: CRC check failed")
                     led_control(0, 0, 0, 0, 1)
             except OSError:
-                print(f"[{station_id}]: I2C fault detected")
+                print(f"[{STATION_ID}]: I2C fault detected")
                 led_control(0, 0, 0, 0, 1)
             time.sleep(5)
     finally:
@@ -68,5 +71,3 @@ def main():
 #main:
 if __name__ == "__main__":
     main()
-
-
