@@ -24,6 +24,7 @@ class TestMain(unittest.TestCase):
         }):
             # led.py needs the fake machine module, so import it inside the patch
             sys.modules["led"] = importlib.import_module("esp32.led")
+            sys.modules["timestamp"] = importlib.import_module("esp32.timestamp")
             app = importlib.import_module("esp32.main")
 
         with (
