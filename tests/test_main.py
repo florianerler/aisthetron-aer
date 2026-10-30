@@ -11,6 +11,12 @@ from esp32 import sht45
 class TestMain(unittest.TestCase):
     def test_recovers_after_i2c_error(self):
         """
+        Check that main() recovers after an I2C error.
+
+        The first reading fails with an OSError, the second one is valid.
+        The timestamp must only be requested for the valid reading and
+        must be printed together with temperature and humidity.
+
         created with help from chatGPT
         """
         # Ersatz für die Hardware-Funktionen auf dem Computer
@@ -37,6 +43,11 @@ class TestMain(unittest.TestCase):
                 ],
             ) as sensor,
             patch.object(
+                app,
+                "get_timestamp",
+                return_value=(1793016000, "sync"),
+            ) as timestamp,
+            patch.object(
                 app.time,
                 "sleep",
                 side_effect=[None, KeyboardInterrupt],
@@ -53,6 +64,8 @@ class TestMain(unittest.TestCase):
         output.assert_any_call("[AER-C01]: I2C fault detected")
         output.assert_any_call("AER-C01: Temperature: 24.41 C")
         output.assert_any_call("AER-C01: Humidity: 47.52 %")
+        output.assert_any_call("AER-C01: Timestamp: (1793016000, 'sync')")
+        timestamp.assert_called_once()
 
         measurement_lines = [
             call.args[0]
