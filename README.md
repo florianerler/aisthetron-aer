@@ -112,7 +112,7 @@ py -B -m unittest discover -s tests -v
 | --- | --- |
 | `tests/test_sht45.py` | CRC calculation, conversion, corrupted packets |
 | `tests/test_led.py` | LED states, rejection of invalid values |
-| `tests/test_main.py` | Recovery after an I²C error |
+| `tests/test_main.py` | Recovery after an I²C error, timestamp in the output |
 | `tests/test_timestamp.py` | Epoch conversion, sync threshold |
 
 ## Build history
