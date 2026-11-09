@@ -45,7 +45,6 @@ def read_sensor(i2c):
     i2c.writeto(0x44, b'\xFD')
     time.sleep_ms(20)
     data = i2c.readfrom(0x44, 6)
-    print(data)
     raw_temperature = data[0] * 256 + data[1]
     raw_humidity = data[3] * 256 + data[4]
     checksum_temp = data[2]
@@ -53,9 +52,9 @@ def read_sensor(i2c):
     calculated_temp = calculate_crc(data[0:2])
     calculated_humidity = calculate_crc(data[3:5])
     if checksum_temp == calculated_temp and checksum_humidity == calculated_humidity:
-        temperature = -45 + 175 * raw_temperature / 65535
+        temperature_c = -45 + 175 * raw_temperature / 65535
         humidity = -6 + 125 * raw_humidity / 65535
-        return temperature, humidity, True
+        return temperature_c, humidity, True
     else:
         return None, None, False
 

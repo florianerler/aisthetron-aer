@@ -16,7 +16,7 @@ import time
 from machine import I2C, Pin
 from sht45 import read_sensor
 from led import led_control
-from timestamp import get_timestamp
+from record import build_record, record_to_line
 
 #variables:
 STATION_ID = "AER-C01"
@@ -49,20 +49,17 @@ def main():
     led_control(0, 1, 0, 0, 0)
     try:
         while True:
-            status_report()
             try:
-                temperature, humidity, valid = read_sensor(i2c)
+                temperature_c, humidity, valid = read_sensor(i2c)
+                record = build_record(STATION_ID, FIRMWARE_VERSION, temperature_c, humidity, valid)
+                print(record_to_line(record))
                 if valid:
-                    timestamp = get_timestamp()
-                    print(f"{STATION_ID}: Temperature: {temperature:.2f} C")
-                    print(f"{STATION_ID}: Humidity: {humidity:.2f} %")
-                    print(f"{STATION_ID}: Timestamp: {timestamp}")
                     led_control(0, 0, 0, 1, 0)
                 else:
-                    print(f"[{STATION_ID}]: CRC check failed")
                     led_control(0, 0, 0, 0, 1)
             except OSError:
-                print(f"[{STATION_ID}]: I2C fault detected")
+                record = build_record(STATION_ID, FIRMWARE_VERSION, None, None, False)
+                print(record_to_line(record))
                 led_control(0, 0, 0, 0, 1)
             time.sleep(5)
     finally:
