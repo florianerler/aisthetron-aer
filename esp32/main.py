@@ -20,7 +20,7 @@ from record import build_record, record_to_line
 
 #variables:
 STATION_ID = "AER-C01"
-FIRMWARE_VERSION = "Firmware: 0.1.6"
+FIRMWARE_VERSION = "Firmware: 0.2.0"
 
 #definitions:
 def start_report():

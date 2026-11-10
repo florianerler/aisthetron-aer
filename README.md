@@ -2,7 +2,7 @@
 
 *Making the Invisible Measurable.*
 
-**AER-C01 · ESP32 + SHT45 · MicroPython · Firmware v0.1.6**
+**AER-C01 · ESP32 + SHT45 · MicroPython · Firmware v0.2.0**
 
 AISTHETRON AER is a hands-on environmental sensing project by Florian Erler. Its first station, **AER-C01**, measures temperature and relative humidity, validates every sensor response with CRC-8 and sends every reading as one JSON line over the USB serial port. Five LEDs show standby, measurement and fault states; two of them are reserved for future use.
 
@@ -64,8 +64,8 @@ led_control(0, 0, 0, 0, 1)  # CRC or I2C fault: red
 Each measurement cycle prints exactly one JSON line. A valid reading contains the values, an invalid one (CRC or I²C error) contains no measurement values:
 
 ```json
-{"id": "AER-C01", "firmware": "Firmware: 0.1.6", "temperature": 24.41, "humidity": 47.52, "valid": true}
-{"id": "AER-C01", "firmware": "Firmware: 0.1.6", "valid": false}
+{"id": "AER-C01", "firmware": "Firmware: 0.2.0", "temperature": 24.41, "humidity": 47.52, "valid": true}
+{"id": "AER-C01", "firmware": "Firmware: 0.2.0", "valid": false}
 ```
 
 The startup report is plain text and printed once at boot. A receiver must ignore every line that does not start with `{`. There is no timestamp in the record; the receiving server adds it.
